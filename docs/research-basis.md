@@ -42,11 +42,13 @@ external standard.
    classification dimensions.
 3. Required top-level sections form the core; optional nested sections are
    extended fields.
-4. `traceability.raw_event_id` and `traceability.raw_sha256` reference
+4. The authoritative original event remains in `RawEventEnvelope`; therefore,
+   `traceability.raw_event_id` and `traceability.raw_sha256` reference that
    authoritative raw evidence.
 5. `traceability.raw_event` is opt-in for self-contained export only.
 6. A first-level vendor namespace such as `extensions.example_vendor` is the
-   unmapped-field escape hatch.
+   unmapped-field escape hatch; first-level vendor extension namespaces must be
+   lowercase `snake_case`.
 7. `quality.parsing_confidence`, warnings and missing fields expose uncertainty
    rather than hiding it.
 8. `event.message` is optional human-readable context; analytics must use
@@ -54,6 +56,8 @@ external standard.
 9. Python validation is deterministic, offline-capable and contains no remote
    API or model dependency.
 10. OCSF/ECS output adapters and formal conformance belong to Epic 6.
+
+The required schema version for this contract is exactly `1.0.0`.
 
 These decisions preserve a compact mandatory envelope while retaining
 losslessness through raw-event references, explicit quality signals and the
@@ -78,4 +82,3 @@ implementation and from downstream export mappings.
 - The external standards and papers are references for defensible design
   choices, not permission to copy proprietary mappings, numeric identifiers,
   cloud architectures, benchmarks, secrets or sensitive payloads.
-
