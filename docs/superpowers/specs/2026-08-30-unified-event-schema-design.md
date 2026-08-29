@@ -21,6 +21,7 @@ This work will deliver:
 - Seven representative perimeter-device example events.
 - Invalid test fixtures for important failure conditions.
 - Basic repository documentation and engineering conventions.
+- A research-basis document that records standards alignment and limits.
 
 It will not implement collection, source-specific parsing, streaming infrastructure, analytical storage, dashboards, exporters or production-scale deployment.
 
@@ -34,6 +35,8 @@ Alternative designs were rejected:
 - A separate schema per category offers precision but weakens universal querying and substantially increases maintenance effort.
 
 The JSON Schema is technology-neutral. Python is used only for the reference validator and tests.
+
+The field model is informed by OCSF, ECS, OpenTelemetry and OWASP guidance, but UnifiedEvent v1 does not claim full conformance with any of them. External mappings remain an integration concern. This avoids coupling the internal contract to one SIEM or telemetry backend while retaining familiar, defensible semantics.
 
 ## 4. Repository structure
 
@@ -51,6 +54,7 @@ ULPF-Prism-SIH-2026/
 │   ├── development-workflow.md
 │   ├── engineering-conventions.md
 │   ├── event-schema.md
+│   ├── research-basis.md
 │   ├── source-pack-guide.md
 │   └── superpowers/specs/
 │       └── 2026-08-30-unified-event-schema-design.md
@@ -160,6 +164,7 @@ Unknown top-level properties are rejected. Vendor-specific fields belong in `ext
 - `category`: required enumeration.
 - `type`: required normalized type.
 - `name`: required human-readable event name.
+- `message`: optional human-readable description of this event occurrence.
 
 Initial categories are:
 
@@ -250,7 +255,7 @@ The semantic validator checks obvious contradictions. For example, `deny` or `bl
 - `normalized`: required integer from 0 through 10.
 - `label`: required enumeration.
 
-Labels are `informational`, `low`, `medium`, `high`, `critical` and `unknown`. V1 will define documented numeric ranges for label consistency.
+Labels are `informational`, `low`, `medium`, `high`, `critical` and `unknown`. Known labels map consistently: `0` is informational, `1–3` low, `4–6` medium, `7–8` high and `9–10` critical. `unknown` is allowed when the source severity cannot be mapped reliably; quality warnings must explain that uncertainty.
 
 ### 7.9 Threat
 
@@ -441,6 +446,7 @@ python -m pytest
 - `docs/development-workflow.md` gives a beginner GitHub workflow.
 - `docs/engineering-conventions.md` defines names, field formats, timestamps, IDs, errors, imports and testing conventions.
 - `docs/event-schema.md` is the human-readable UnifiedEvent reference.
+- `docs/research-basis.md` records the authoritative standards, papers, adopted ideas, rejected ideas and version/date of review.
 - `docs/source-pack-guide.md` documents only the minimum boundary that source-pack work must respect; Member 2 owns its detailed design.
 - `.editorconfig`, `.gitignore`, `pyproject.toml` and `requirements-dev.txt` establish consistent local tooling and prevent generated or sensitive files from being committed.
 
@@ -467,3 +473,18 @@ Issue #9 is complete when:
 - The full test suite passes from a clean checkout using documented commands.
 - At least Members 1 and 2 review the shared contract before merge.
 
+## 14. Standards and research basis
+
+Implementation will be checked against these primary sources:
+
+- [OCSF Schema 1.8.0](https://github.com/ocsf/ocsf-schema/releases) for category/class/activity separation, reusable objects, explicit requirement levels and extension boundaries.
+- [OCSF overview](https://github.com/ocsf/ocsf-docs/blob/main/overview/understanding-ocsf.md) for base-event classification and required/recommended/optional attributes.
+- [Elastic Common Schema 9.5.0](https://www.elastic.co/docs/reference/ecs) for core-versus-extended fields, lowercase names, field sets and vendor-neutral analytics semantics.
+- [OpenTelemetry Semantic Conventions 1.44.0](https://opentelemetry.io/docs/specs/semconv/) and its [stable Logs Data Model](https://opentelemetry.io/docs/specs/otel/logs/data-model/) for keeping only frequent universal fields in the core, stable event identity and extensible attributes.
+- [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html) for when/where/who/what coverage, analytical confidence, source trust and integrity concerns.
+- [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12) for structural validation and reusable definitions.
+- Pinjia He et al., [Drain: An Online Log Parsing Approach with Fixed Depth Tree](https://doi.org/10.1109/ICWS.2017.13), for deterministic streaming parser context.
+- Qiaolin Qin et al., [Preprocessing is All You Need](https://arxiv.org/abs/2412.05254), for evidence that preprocessing and parsing must be evaluated together.
+- Zeyan Li et al., [Adaptive and Efficient Log Parsing as a Cloud Service](https://doi.org/10.1145/3722212.3724427), for recent evidence on throughput, precision and compute trade-offs at scale.
+
+The three parsing papers are contextual inputs for Epic 2 and Epic 4. Issue #9 uses them only to ensure that ParsedEvent-to-UnifiedEvent boundaries remain deterministic and versioned. It will not add an LLM or automatic template miner to the schema validator.
