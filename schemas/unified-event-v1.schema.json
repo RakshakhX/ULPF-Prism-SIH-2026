@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rakshakhx.github.io/ulpf/schemas/unified-event-v1.schema.json",
+  "title": "ULPF UnifiedEvent v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event",
+    "time",
+    "observer",
+    "action",
+    "severity",
+    "traceability",
+    "quality"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "event": {"$ref": "#/$defs/event"},
+    "time": {"$ref": "#/$defs/time"},
+    "source": {"$ref": "#/$defs/endpoint"},
+    "destination": {"$ref": "#/$defs/endpoint"},
+    "observer": {"$ref": "#/$defs/observer"},
+    "network": {"$ref": "#/$defs/network"},
+    "action": {"$ref": "#/$defs/action"},
+    "severity": {"$ref": "#/$defs/severity"},
+    "threat": {"$ref": "#/$defs/threat"},
+    "authentication": {"$ref": "#/$defs/authentication"},
+    "http": {"$ref": "#/$defs/http"},
+    "traceability": {"$ref": "#/$defs/traceability"},
+    "quality": {"$ref": "#/$defs/quality"},
+    "extensions": {"$ref": "#/$defs/extensions"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "properties": {"category": {"const": "network"}},
+            "required": ["category"]
+          }
+        }
+      },
+      "then": {"required": ["source", "destination", "network"]}
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "properties": {"category": {"const": "intrusion_detection"}},
+            "required": ["category"]
+          }
+        }
+      },
+      "then": {"required": ["threat"]}
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "properties": {"category": {"const": "authentication"}},
+            "required": ["category"]
+          }
+        }
+      },
+      "then": {"required": ["authentication"]}
+    }
+  ],
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "ip_address": {
+      "oneOf": [
+        {"type": "string", "format": "ipv4"},
+        {"type": "string", "format": "ipv6"}
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "category", "type", "name"],
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "kind": {"const": "event"},
+        "category": {
+          "enum": ["network", "intrusion_detection", "authentication", "web", "system", "unknown"]
+        },
+        "type": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"},
+        "name": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1}
+      }
+    },
+    "time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed_at", "ingested_at", "normalized_at"],
+      "properties": {
+        "observed_at": {"type": "string", "format": "date-time", "pattern": "Z$"},
+        "ingested_at": {"type": "string", "format": "date-time", "pattern": "Z$"},
+        "normalized_at": {"type": "string", "format": "date-time", "pattern": "Z$"}
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ip": {"$ref": "#/$defs/ip_address"},
+        "port": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "hostname": {"type": "string", "minLength": 1},
+        "mac": {"type": "string", "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"},
+        "user": {"type": "string", "minLength": 1},
+        "interface": {"type": "string", "minLength": 1}
+      },
+      "minProperties": 1
+    },
+    "observer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vendor", "product", "type"],
+      "properties": {
+        "vendor": {"type": "string", "minLength": 1},
+        "product": {"type": "string", "minLength": 1},
+        "type": {"enum": ["firewall", "ids", "ips", "vpn", "proxy", "router", "waf", "unknown"]},
+        "hostname": {"type": "string", "minLength": 1},
+        "serial_number": {"type": "string", "minLength": 1},
+        "software_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "transport": {"enum": ["tcp", "udp", "icmp", "icmpv6", "gre", "other", "unknown"]},
+        "application_protocol": {"type": "string", "minLength": 1},
+        "direction": {"enum": ["inbound", "outbound", "internal", "external", "unknown"]},
+        "bytes": {"type": "integer", "minimum": 0},
+        "packets": {"type": "integer", "minimum": 0}
+      },
+      "minProperties": 1
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["original", "normalized", "outcome"],
+      "properties": {
+        "original": {"type": "string", "minLength": 1},
+        "normalized": {"enum": ["allow", "deny", "block", "detect", "authenticate", "connect", "disconnect", "unknown"]},
+        "outcome": {"enum": ["success", "failure", "unknown"]},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "severity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["original", "normalized", "label"],
+      "properties": {
+        "original": {"type": "string"},
+        "normalized": {"type": "integer", "minimum": 0, "maximum": 10},
+        "label": {"enum": ["informational", "low", "medium", "high", "critical", "unknown"]}
+      }
+    },
+    "threat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "signature_id": {"type": "string", "minLength": 1},
+        "category": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user", "result"],
+      "properties": {
+        "user": {"type": "string", "minLength": 1},
+        "method": {"type": "string", "minLength": 1},
+        "result": {"enum": ["success", "failure", "unknown"]},
+        "failure_reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "http": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "method": {"type": "string", "pattern": "^[A-Z]+$"},
+        "host": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "pattern": "^/"},
+        "status_code": {"type": "integer", "minimum": 100, "maximum": 599},
+        "user_agent": {"type": "string"}
+      },
+      "minProperties": 1
+    },
+    "versioned_component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"$ref": "#/$defs/semver"}
+      }
+    },
+    "raw_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encoding", "content_type", "content"],
+      "properties": {
+        "encoding": {"const": "utf-8"},
+        "content_type": {"type": "string", "minLength": 1},
+        "content": {"type": "string"}
+      }
+    },
+    "traceability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_event_id", "raw_sha256", "source_pack", "parser"],
+      "properties": {
+        "raw_event_id": {"type": "string", "format": "uuid"},
+        "raw_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source_pack": {"$ref": "#/$defs/versioned_component"},
+        "parser": {"$ref": "#/$defs/versioned_component"},
+        "raw_event": {"$ref": "#/$defs/raw_event"}
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "parsing_confidence", "missing_fields", "warnings"],
+      "properties": {
+        "status": {"enum": ["valid", "partial", "invalid", "unknown"]},
+        "parsing_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "missing_fields": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "warnings": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"},
+      "additionalProperties": {"type": "object"}
+    }
+  }
+}
