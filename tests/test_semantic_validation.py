@@ -154,9 +154,7 @@ def test_embedded_raw_content_with_matching_hash_is_accepted() -> None:
         "content_type": "text/plain",
         "content": content,
     }
-    event["traceability"]["raw_sha256"] = hashlib.sha256(
-        content.encode("utf-8")
-    ).hexdigest()
+    event["traceability"]["raw_sha256"] = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     assert validate_semantics(event) == ()
 

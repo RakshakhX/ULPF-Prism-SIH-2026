@@ -33,8 +33,9 @@ def test_schema_version_and_required_sections_are_locked(schema: dict) -> None:
 
 def test_category_conditionals_are_present(schema: dict) -> None:
     required_by_category = {
-        rule["if"]["properties"]["event"]["properties"]["category"]["const"]:
-        set(rule["then"]["required"])
+        rule["if"]["properties"]["event"]["properties"]["category"]["const"]: set(
+            rule["then"]["required"]
+        )
         for rule in schema["allOf"]
     }
 

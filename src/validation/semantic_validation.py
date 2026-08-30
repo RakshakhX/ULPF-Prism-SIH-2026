@@ -62,9 +62,7 @@ def validate_semantics(event: Mapping[str, Any]) -> tuple[ValidationIssue, ...]:
                 "intrusion_detection events require threat details",
             )
         )
-    if category == "authentication" and not isinstance(
-        event.get("authentication"), Mapping
-    ):
+    if category == "authentication" and not isinstance(event.get("authentication"), Mapping):
         issues.append(
             _issue(
                 "$.authentication",
@@ -179,9 +177,7 @@ def validate_semantics(event: Mapping[str, Any]) -> tuple[ValidationIssue, ...]:
                 )
 
     traceability = event.get("traceability", {})
-    if isinstance(traceability, Mapping) and isinstance(
-        traceability.get("raw_event"), Mapping
-    ):
+    if isinstance(traceability, Mapping) and isinstance(traceability.get("raw_event"), Mapping):
         raw_event = traceability["raw_event"]
         content = raw_event.get("content")
         if isinstance(content, str):
