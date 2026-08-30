@@ -10,6 +10,10 @@ from .schema_validation import validate_structure
 from .semantic_validation import validate_semantics
 
 
+class TopLevelJSONTypeError(ValueError):
+    """Raised when a JSON document does not contain an object at its top level."""
+
+
 def validate_event(event: Mapping[str, Any]) -> ValidationResult:
     issues = set(validate_structure(event))
     issues.update(validate_semantics(event))
@@ -19,7 +23,7 @@ def validate_event(event: Mapping[str, Any]) -> ValidationResult:
 def validate_file(path: Path) -> ValidationResult:
     event = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(event, dict):
-        raise ValueError("top-level JSON value must be an object")
+        raise TopLevelJSONTypeError("top-level JSON value must be an object")
     return validate_event(event)
 
 
@@ -33,7 +37,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         result = validate_file(args.event_file)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+    except (OSError, UnicodeError, json.JSONDecodeError, TopLevelJSONTypeError) as error:
         print(f"ERROR: unable to read {args.event_file}: {error}", file=sys.stderr)
         return 2
 
