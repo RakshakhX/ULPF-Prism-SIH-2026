@@ -1,0 +1,20 @@
+<166>Jan 15 2026 10:00:01 asa-fw01 %ASA-6-106100: access-list OUTSIDE_IN permitted tcp outside/203.0.113.10(51321) -> inside/10.1.1.5(443) hit-cnt 1 first hit
+<166>Jan 15 2026 10:00:03 asa-fw01 %ASA-6-106100: access-list OUTSIDE_IN denied tcp outside/198.51.100.22(41220) -> inside/10.1.1.5(22) hit-cnt 1 first hit
+<166>Jan 15 2026 10:00:05 asa-fw01 %ASA-6-302013: Built inbound TCP connection 1123456 for outside:203.0.113.11/51322 (203.0.113.11/51322) to inside:10.1.1.6/443 (10.1.1.6/443)
+<166>Jan 15 2026 10:00:07 asa-fw01 %ASA-6-302014: Teardown TCP connection 1123456 for outside:203.0.113.11/51322 to inside:10.1.1.6/443 duration 0:00:02 bytes 2048 TCP FINs
+<166>Jan 15 2026 10:00:09 asa-fw01 %ASA-4-106023: Deny tcp src outside:198.51.100.23/44210 dst inside:10.1.1.7/3389 by access-group "OUTSIDE_IN" [0x0, 0x0]
+<166>Jan 15 2026 10:00:11 asa-fw01 %ASA-6-302015: Built outbound UDP connection 1123457 for outside:8.8.8.8/53 (8.8.8.8/53) to inside:10.1.1.8/54212 (10.1.1.8/54212)
+<166>Jan 15 2026 10:00:13 asa-fw01 %ASA-6-113004: AAA user authentication Successful : server = 10.1.1.2 : user = jdoe
+<166>Jan 15 2026 10:00:15 asa-fw01 %ASA-6-113005: AAA user authentication Rejected : reason = Invalid password : server = 10.1.1.2 : user = asmith
+<166>Jan 15 2026 10:00:17 asa-fw01 %ASA-5-111008: User 'admin' executed the 'configure terminal' command.
+<166>Jan 15 2026 10:00:19 asa-fw01 %ASA-6-302013: Built inbound TCP connection 1123458 for outside:203.0.113.12/51330 (203.0.113.12/51330) to inside:10.1.1.9/80 (10.1.1.9/80)
+<166>Jan 15 2026 10:00:21 asa-fw01 %ASA-4-106023: Deny udp src outside:198.51.100.24/33221 dst inside:10.1.1.10/161 by access-group "OUTSIDE_IN" [0x0, 0x0]
+<166>Jan 15 2026 10:00:23 asa-fw01 %ASA-6-302014: Teardown UDP connection 1123457 for outside:8.8.8.8/53 to inside:10.1.1.8/54212 duration 0:00:01 bytes 128
+<166>Jan 15 2026 10:00:25 asa-fw01 %ASA-6-106100: access-list OUTSIDE_IN permitted tcp outside/203.0.113.13(51340) -> inside/10.1.1.11(443) hit-cnt 3 300-second interval
+<166>Jan 15 2026 10:00:27 asa-fw01 %ASA-3-201008: Disallowing new connections from outside:198.51.100.25/1234 to inside:10.1.1.12/25 due to conn-limit
+<166>Jan 15 2026 10:00:29 asa-fw01 %ASA-6-302013: Built inbound TCP connection 1123459 for outside:203.0.113.14/51350 (203.0.113.14/51350) to inside:10.1.1.13/443 (10.1.1.13/443)
+<166>Jan 15 2026 10:00:31 asa-fw01 %ASA-6-113004: AAA user authentication Successful : server = 10.1.1.2 : user = mchen
+<166>Jan 15 2026 10:00:33 asa-fw01 %ASA-6-302015: Built outbound TCP connection 1123460 for inside:10.1.1.14/55210 (10.1.1.14/55210) to outside:203.0.113.15/443 (203.0.113.15/443)
+<166>Jan 15 2026 10:00:35 asa-fw01 %ASA-4-106023: Deny tcp src outside:198.51.100.26/50000 dst inside:10.1.1.15/23 by access-group "OUTSIDE_IN" [0x0, 0x0]
+<166>Jan 15 2026 10:00:37 asa-fw01 %ASA-6-302014: Teardown TCP connection 1123460 for inside:10.1.1.14/55210 to outside:203.0.113.15/443 duration 0:00:04 bytes 4096 TCP FINs
+<166>Jan 15 2026 10:00:39 asa-fw01 %ASA-6-113005: AAA user authentication Rejected : reason = Account locked : server = 10.1.1.2 : user = tlee
