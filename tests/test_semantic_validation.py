@@ -3,6 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from src.validation.semantic_validation import validate_semantics
 
 FIXTURE = Path("tests/fixtures/valid_minimal_network_event.json")
@@ -36,11 +38,28 @@ def test_block_action_cannot_report_success() -> None:
     assert "$.action.outcome" in issue_paths(event)
 
 
+def test_deny_action_cannot_report_success() -> None:
+    event = load_event()
+    event["action"] = {"original": "Deny", "normalized": "deny", "outcome": "success"}
+
+    assert "$.action.outcome" in issue_paths(event)
+
+
 def test_known_severity_label_must_match_normalized_range() -> None:
     event = load_event()
     event["severity"] = {"original": "High", "normalized": 8, "label": "low"}
 
     assert "$.severity.label" in issue_paths(event)
+
+
+@pytest.mark.parametrize("normalized", [-1, 11])
+def test_out_of_domain_severity_does_not_receive_a_semantic_label(
+    normalized: int,
+) -> None:
+    event = load_event()
+    event["severity"] = {"original": "Invalid", "normalized": normalized, "label": "informational"}
+
+    assert validate_semantics(event) == ()
 
 
 def test_unknown_severity_requires_quality_warning() -> None:
@@ -59,11 +78,26 @@ def test_authentication_result_must_match_action_outcome() -> None:
     assert "$.authentication.result" in issue_paths(event)
 
 
+def test_authentication_events_require_an_authentication_section() -> None:
+    event = load_event()
+    event["event"]["category"] = "authentication"
+
+    assert "$.authentication" in issue_paths(event)
+
+
 def test_partial_quality_requires_an_explanation() -> None:
     event = load_event()
     event["quality"]["status"] = "partial"
 
     assert "$.quality" in issue_paths(event)
+
+
+def test_partial_quality_with_a_warning_is_accepted() -> None:
+    event = load_event()
+    event["quality"]["status"] = "partial"
+    event["quality"]["warnings"] = ["source message omitted optional fields"]
+
+    assert validate_semantics(event) == ()
 
 
 def test_embedded_raw_content_hash_is_verified() -> None:
@@ -89,6 +123,13 @@ def test_category_requirements_are_reported_for_incomplete_mappings() -> None:
     event["event"]["category"] = "intrusion_detection"
 
     assert "$.threat" in issue_paths(event)
+
+
+def test_network_events_require_both_endpoint_ips() -> None:
+    event = load_event()
+    del event["destination"]["ip"]
+
+    assert "$.destination.ip" in issue_paths(event)
 
 
 def test_invalid_extension_namespaces_are_reported_deterministically() -> None:
@@ -129,6 +170,15 @@ def test_partially_structured_mappings_do_not_raise() -> None:
         "traceability": {"raw_event": ["not-a-mapping"]},
         "quality": {"warnings": None},
         "extensions": ["not-a-mapping"],
+    }
+
+    assert validate_semantics(event) == ()
+
+
+def test_unhashable_action_and_authentication_leaves_do_not_raise() -> None:
+    event = {
+        "action": {"normalized": [], "outcome": {}},
+        "authentication": {"result": {}},
     }
 
     assert validate_semantics(event) == ()

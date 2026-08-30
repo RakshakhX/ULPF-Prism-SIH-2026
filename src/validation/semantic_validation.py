@@ -75,9 +75,13 @@ def validate_semantics(event: Mapping[str, Any]) -> tuple[ValidationIssue, ...]:
 
     action = event.get("action", {})
     if isinstance(action, Mapping):
-        if action.get("normalized") in {"deny", "block"} and action.get(
-            "outcome"
-        ) == "success":
+        normalized_action = action.get("normalized")
+        action_outcome = action.get("outcome")
+        if (
+            isinstance(normalized_action, str)
+            and normalized_action in {"deny", "block"}
+            and action_outcome == "success"
+        ):
             issues.append(
                 _issue(
                     "$.action.outcome",
@@ -90,7 +94,11 @@ def validate_semantics(event: Mapping[str, Any]) -> tuple[ValidationIssue, ...]:
     if isinstance(severity, Mapping):
         normalized_severity = severity.get("normalized")
         severity_label = severity.get("label")
-        if type(normalized_severity) is int and severity_label != "unknown":
+        if (
+            type(normalized_severity) is int
+            and 0 <= normalized_severity <= 10
+            and severity_label != "unknown"
+        ):
             if normalized_severity == 0:
                 expected_label = "informational"
             elif normalized_severity <= 3:
@@ -133,7 +141,9 @@ def validate_semantics(event: Mapping[str, Any]) -> tuple[ValidationIssue, ...]:
         auth_result = authentication.get("result")
         outcome = action.get("outcome")
         if (
-            auth_result in {"success", "failure"}
+            isinstance(auth_result, str)
+            and auth_result in {"success", "failure"}
+            and isinstance(outcome, str)
             and outcome in {"success", "failure"}
             and auth_result != outcome
         ):
