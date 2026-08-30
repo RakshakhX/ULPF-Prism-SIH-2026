@@ -17,7 +17,7 @@
   "observer": {"vendor": "example_vendor", "product": "edge_firewall", "type": "firewall"},
   "network": {"transport": "tcp", "application_protocol": "https", "direction": "outbound"},
   "action": {"original": "Accept", "normalized": "allow", "outcome": "success"},
-  "severity": {"original": "Info", "normalized": 1, "label": "informational"},
+  "severity": {"original": "Info", "normalized": 0, "label": "informational"},
   "traceability": {
     "raw_event_id": "c065ea9a-04fc-4a45-8aa9-b6a919a0fdf6",
     "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
