@@ -5,8 +5,9 @@
 **Reviewed:** 2026-08-30
 
 This document records the standards and literature reviewed for UnifiedEvent v1.
-The sources inform terminology and design boundaries; UnifiedEvent v1 remains a
-technology-neutral internal contract and does not claim full conformance to any
+The sources inform terminology and design boundaries; UnifiedEvent v1 is
+**aligned with selected ideas** from these sources, but remains a
+technology-neutral internal contract and is **not fully compliant** with any
 external standard.
 
 ## Standards and literature decision table
