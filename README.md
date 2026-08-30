@@ -24,7 +24,7 @@ python -m pytest
 python -m src.validation.validate_unified_event examples/unified_events/firewall_deny.json
 ```
 
-On Windows PowerShell, activate the environment with `.venv\\Scripts\\Activate.ps1` instead.
+On Windows PowerShell, activate the environment with `.venv\Scripts\Activate.ps1` instead.
 
 ## Example
 
