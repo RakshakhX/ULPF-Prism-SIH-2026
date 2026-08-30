@@ -48,10 +48,10 @@ def main():
         return
 
     logger.info("="*50)
-    logger.info(f"🚀 Starting Load Generator")
-    logger.info(f"📊 Target EPS: {EVENTS_PER_SECOND}")
-    logger.info(f"🔥 Burst Mode: {BURST_MODE}")
-    logger.info(f"☠️  Malformed (Poison) Rate: {MALFORMED_PERCENTAGE}%")
+    logger.info(f" Starting Load Generator")
+    logger.info(f" Target EPS: {EVENTS_PER_SECOND}")
+    logger.info(f" Burst Mode: {BURST_MODE}")
+    logger.info(f"  Malformed (Poison) Rate: {MALFORMED_PERCENTAGE}%")
     logger.info("="*50)
     
     try:
@@ -78,7 +78,7 @@ def main():
                 time.sleep(1.0 / EVENTS_PER_SECOND)
                 
     except KeyboardInterrupt:
-        logger.info("\n🛑 Stopping load generator (Keyboard Interrupt).")
+        logger.info("\n Stopping load generator (Keyboard Interrupt).")
     finally:
         logger.info("Flushing remaining messages in queue...")
         producer.flush()
