@@ -8,6 +8,7 @@ REQUIRED_FILES = {
     "docs/development-workflow.md",
     "docs/engineering-conventions.md",
     "docs/event-schema.md",
+    "docs/member-6-visibility-guide.md",
     "docs/research-basis.md",
     "docs/source-pack-guide.md",
 }
@@ -37,3 +38,11 @@ def test_readme_contains_working_commands() -> None:
     content = Path("README.md").read_text(encoding="utf-8")
     assert "python -m pytest" in content
     assert "python -m src.validation.validate_unified_event" in content
+
+
+def test_member_six_guide_locks_owner_and_work_sequence() -> None:
+    content = Path("docs/member-6-visibility-guide.md").read_text(encoding="utf-8")
+    assert "hridayjain886-bit" in content
+    assert "Epic 5" in content
+    assert "Suggested child issues" in content
+    assert "Do not commit directly to `main`" in content

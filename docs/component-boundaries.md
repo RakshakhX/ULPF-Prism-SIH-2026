@@ -8,7 +8,7 @@ The following target ownership table is the shared handoff contract. It does not
 | Parsing | Garvit Mundra | `RawEventEnvelope` | `ParsedEvent` |
 | Normalization | Gaurang Bhatia | `ParsedEvent` | `UnifiedEvent` |
 | Streaming | Lalit Kumar Sureliya | shared event contracts | transported event |
-| Visibility | `hridayjain886-bit` | `UnifiedEvent` | search/dashboard views |
+| Visibility | [`hridayjain886-bit`](member-6-visibility-guide.md) | `UnifiedEvent` | search/dashboard views |
 | Integration | Sharanya | `UnifiedEvent` plus raw references | JSON/data-lake output |
 
 ## Rules at a handoff

@@ -43,6 +43,7 @@ The CLI returns `0` for valid events, `1` for invalid events, and `2` when it ca
 - [Development workflow](docs/development-workflow.md)
 - [Engineering conventions](docs/engineering-conventions.md)
 - [UnifiedEvent v1 reference](docs/event-schema.md)
+- [Member 6: storage and visibility guide](docs/member-6-visibility-guide.md)
 - [Research basis](docs/research-basis.md)
 - [Source Pack boundary](docs/source-pack-guide.md)
 - [Contributing](CONTRIBUTING.md)
