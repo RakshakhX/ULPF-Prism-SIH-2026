@@ -1,6 +1,6 @@
 # Component boundaries and ownership
 
-The following target ownership table is the shared handoff contract. It does not mean every component is implemented in Sprint 0. In particular, Visibility remains intentionally unassigned until a team member takes it on.
+The following target ownership table is the shared handoff contract. It does not mean every component is implemented in Sprint 0. The Visibility boundary is assigned through Epic 5, while its storage and dashboard implementation remains planned.
 
 | Component | Owner | Input | Output |
 |---|---|---|---|
@@ -8,7 +8,7 @@ The following target ownership table is the shared handoff contract. It does not
 | Parsing | Garvit Mundra | `RawEventEnvelope` | `ParsedEvent` |
 | Normalization | Gaurang Bhatia | `ParsedEvent` | `UnifiedEvent` |
 | Streaming | Lalit Kumar Sureliya | shared event contracts | transported event |
-| Visibility | Unassigned | `UnifiedEvent` | search/dashboard views |
+| Visibility | `hridayjain886-bit` | `UnifiedEvent` | search/dashboard views |
 | Integration | Sharanya | `UnifiedEvent` plus raw references | JSON/data-lake output |
 
 ## Rules at a handoff
