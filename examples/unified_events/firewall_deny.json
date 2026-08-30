@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "event": {"id": "c2d6e3f4-9a50-4b73-8c48-1d2e3f405162", "kind": "event", "category": "network", "type": "connection", "name": "Firewall traffic denied"},
+  "time": {"observed_at": "2026-08-30T10:20:30Z", "ingested_at": "2026-08-30T10:20:31Z", "normalized_at": "2026-08-30T10:20:32Z"},
+  "source": {"ip": "203.0.113.11", "port": 49321},
+  "destination": {"ip": "198.51.100.21", "port": 22},
+  "observer": {"vendor": "example_vendor", "product": "edge_firewall", "type": "firewall", "hostname": "edge-fw-02", "serial_number": "EXAMPLE-FW-002", "software_version": "1.0"},
+  "network": {"transport": "tcp", "application_protocol": "ssh", "direction": "inbound", "bytes": 0, "packets": 1},
+  "action": {"original": "Deny", "normalized": "deny", "outcome": "failure", "reason": "Blocked by perimeter policy"},
+  "severity": {"original": "Medium", "normalized": 5, "label": "medium"},
+  "traceability": {"raw_event_id": "d3e7f405-a161-4c84-9d59-2e3f40516273", "raw_sha256": "7ae0bc1f3e2529e582c1451bf51a00b4f41a0627d0a6ba5b5bc57117fa5f1ed5", "source_pack": {"name": "example_firewall", "version": "1.0.0"}, "parser": {"name": "syslog_parser", "version": "1.0.0"}},
+  "quality": {"status": "valid", "parsing_confidence": 1.0, "missing_fields": [], "warnings": []}
+}

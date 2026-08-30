@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "event": {"id": "e4f80516-b272-4d95-8e6a-3f4051627384", "kind": "event", "category": "intrusion_detection", "type": "signature_match", "name": "IDS threat detected"},
+  "time": {"observed_at": "2026-08-30T10:25:30Z", "ingested_at": "2026-08-30T10:25:31Z", "normalized_at": "2026-08-30T10:25:32Z"},
+  "source": {"ip": "192.0.2.30", "port": 51888},
+  "destination": {"ip": "198.51.100.30", "port": 443},
+  "observer": {"vendor": "example_vendor", "product": "network_ids", "type": "ids", "hostname": "ids-01", "serial_number": "EXAMPLE-IDS-001", "software_version": "1.0"},
+  "network": {"transport": "tcp", "application_protocol": "https", "direction": "outbound", "bytes": 768, "packets": 6},
+  "action": {"original": "Alert", "normalized": "detect", "outcome": "unknown"},
+  "severity": {"original": "High", "normalized": 8, "label": "high"},
+  "threat": {"name": "Suspicious command-and-control traffic", "signature_id": "SIG-1001", "category": "command_and_control", "confidence": 0.94},
+  "traceability": {"raw_event_id": "f5161627-c383-4ea6-9f7b-405162738495", "raw_sha256": "8b43c5a3cc7299d9d49a7b0f6bd84f90499fecb4aa8d24cdef34a8e2bd51e0af", "source_pack": {"name": "example_ids", "version": "1.0.0"}, "parser": {"name": "ids_parser", "version": "1.0.0"}},
+  "quality": {"status": "valid", "parsing_confidence": 0.94, "missing_fields": [], "warnings": []}
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "event": {"id": "06172738-d494-4fb7-8a8c-5162738495a6", "kind": "event", "category": "authentication", "type": "vpn_login", "name": "VPN authentication failed"},
+  "time": {"observed_at": "2026-08-30T10:30:30Z", "ingested_at": "2026-08-30T10:30:31Z", "normalized_at": "2026-08-30T10:30:32Z"},
+  "source": {"ip": "203.0.113.40"},
+  "observer": {"vendor": "example_vendor", "product": "remote_access_vpn", "type": "vpn", "hostname": "vpn-01", "serial_number": "EXAMPLE-VPN-001", "software_version": "1.0"},
+  "action": {"original": "Login failed", "normalized": "authenticate", "outcome": "failure", "reason": "invalid_credentials"},
+  "severity": {"original": "Low", "normalized": 3, "label": "low"},
+  "authentication": {"user": "alice", "method": "password", "result": "failure", "failure_reason": "invalid_credentials"},
+  "traceability": {"raw_event_id": "17283849-e5a5-40c8-9b9d-62738495a6b7", "raw_sha256": "545d6d835d267d415ef7ed129ce7d4d9b11c9b07b9532695c0d636bd42457415", "source_pack": {"name": "example_vpn", "version": "1.0.0"}, "parser": {"name": "vpn_parser", "version": "1.0.0"}},
+  "quality": {"status": "valid", "parsing_confidence": 1.0, "missing_fields": [], "warnings": []}
+}
