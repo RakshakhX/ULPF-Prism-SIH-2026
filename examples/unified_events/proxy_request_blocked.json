@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "event": {"id": "2839495a-f6b6-41d9-8cad-738495a6b7c8", "kind": "event", "category": "web", "type": "proxy_request", "name": "Proxy request blocked"},
+  "time": {"observed_at": "2026-08-30T10:35:30Z", "ingested_at": "2026-08-30T10:35:31Z", "normalized_at": "2026-08-30T10:35:32Z"},
+  "source": {"ip": "192.0.2.50", "port": 53001},
+  "destination": {"ip": "198.51.100.50", "port": 443},
+  "observer": {"vendor": "example_vendor", "product": "secure_proxy", "type": "proxy", "hostname": "proxy-01", "serial_number": "EXAMPLE-PROXY-001", "software_version": "1.0"},
+  "network": {"transport": "tcp", "application_protocol": "https", "direction": "outbound", "bytes": 512, "packets": 4},
+  "action": {"original": "Blocked", "normalized": "block", "outcome": "failure"},
+  "severity": {"original": "High", "normalized": 7, "label": "high"},
+  "http": {"method": "GET", "host": "blocked.example", "path": "/malware", "status_code": 403},
+  "traceability": {"raw_event_id": "394a5a6b-07c7-42ea-9dbe-8495a6b7c8d9", "raw_sha256": "aa0defddb27f5c3d92ed52581014a81032801444920325c1b1b4ed0eccd377e3", "source_pack": {"name": "example_proxy", "version": "1.0.0"}, "parser": {"name": "proxy_parser", "version": "1.0.0"}},
+  "quality": {"status": "valid", "parsing_confidence": 1.0, "missing_fields": [], "warnings": []}
+}

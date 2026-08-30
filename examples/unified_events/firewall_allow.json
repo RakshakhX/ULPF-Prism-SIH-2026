@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0.0",
+  "event": {
+    "id": "a0f4c1b2-7d3e-4f51-8a26-9b0c1d2e3f40",
+    "kind": "event",
+    "category": "network",
+    "type": "connection",
+    "name": "Firewall traffic allowed"
+  },
+  "time": {
+    "observed_at": "2026-08-30T10:15:30Z",
+    "ingested_at": "2026-08-30T10:15:31Z",
+    "normalized_at": "2026-08-30T10:15:32Z"
+  },
+  "source": {"ip": "192.0.2.10", "port": 51514},
+  "destination": {"ip": "198.51.100.20", "port": 443},
+  "observer": {
+    "vendor": "example_vendor",
+    "product": "edge_firewall",
+    "type": "firewall",
+    "hostname": "edge-fw-01",
+    "serial_number": "EXAMPLE-FW-001",
+    "software_version": "1.0"
+  },
+  "network": {
+    "transport": "tcp",
+    "application_protocol": "https",
+    "direction": "outbound",
+    "bytes": 2048,
+    "packets": 12
+  },
+  "action": {"original": "Accept", "normalized": "allow", "outcome": "success"},
+  "severity": {"original": "Info", "normalized": 0, "label": "informational"},
+  "traceability": {
+    "raw_event_id": "b1e5d2c3-8e4f-4a62-9b37-0c1d2e3f4051",
+    "raw_sha256": "8d7d11b08d99f5c6f1ce12d107714e7ceba5e5bd1daa1b7cde7757e34e2c76a9",
+    "source_pack": {"name": "example_firewall", "version": "1.0.0"},
+    "parser": {"name": "syslog_parser", "version": "1.0.0"}
+  },
+  "quality": {"status": "valid", "parsing_confidence": 1.0, "missing_fields": [], "warnings": []},
+  "extensions": {"example_vendor": {"policy_id": "POL-ALLOW-100"}}
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "event": {"id": "6c7d8e9f-3afa-451d-8ae1-b7c8d9e0f102", "kind": "event", "category": "web", "type": "waf_attack", "name": "WAF attack blocked"},
+  "time": {"observed_at": "2026-08-30T10:45:30Z", "ingested_at": "2026-08-30T10:45:31Z", "normalized_at": "2026-08-30T10:45:32Z"},
+  "source": {"ip": "192.0.2.70", "port": 54000},
+  "destination": {"ip": "198.51.100.70", "port": 443},
+  "observer": {"vendor": "example_vendor", "product": "web_application_firewall", "type": "waf", "hostname": "waf-01", "serial_number": "EXAMPLE-WAF-001", "software_version": "1.0"},
+  "network": {"transport": "tcp", "application_protocol": "https", "direction": "inbound", "bytes": 896, "packets": 7},
+  "action": {"original": "Blocked", "normalized": "block", "outcome": "failure"},
+  "severity": {"original": "Critical", "normalized": 9, "label": "critical"},
+  "threat": {"name": "SQL injection attempt", "category": "sql_injection", "confidence": 0.99},
+  "http": {"method": "POST", "host": "app.example", "path": "/login", "status_code": 403},
+  "traceability": {
+    "raw_event_id": "7d8e9f01-4b0b-462e-9bf2-c8d9e0f10213",
+    "raw_sha256": "61ec4a5247db0f628c5c97a924f4579b4355dcfe56093dc0f0bf48f58cb534d5",
+    "source_pack": {"name": "example_waf", "version": "1.0.0"},
+    "parser": {"name": "waf_parser", "version": "1.0.0"},
+    "raw_event": {
+      "encoding": "utf-8",
+      "content_type": "text/plain",
+      "content": "<134>WAF blocked SQL injection from 192.0.2.70 to /login"
+    }
+  },
+  "quality": {"status": "valid", "parsing_confidence": 0.99, "missing_fields": [], "warnings": []}
+}
