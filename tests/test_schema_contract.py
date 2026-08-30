@@ -204,3 +204,27 @@ def test_category_conditionals_reject_missing_guarded_sections(
     }
 
     assert missing_sections <= missing
+
+
+@pytest.mark.parametrize("event_value", [pytest.param(None, id="missing"), "not-an-object"])
+def test_category_conditionals_do_not_activate_without_an_event_object(
+    format_aware_validator: Draft202012Validator, event_value: object
+) -> None:
+    instance = valid_unified_event()
+    if event_value is None:
+        del instance["event"]
+    else:
+        instance["event"] = event_value
+
+    errors = list(format_aware_validator.iter_errors(instance))
+    category_required = {"source", "destination", "network", "threat", "authentication"}
+
+    assert not any(
+        error.validator == "required"
+        and any(section in error.message for section in category_required)
+        for error in errors
+    )
+    if event_value is None:
+        assert any(error.validator == "required" and "event" in error.message for error in errors)
+    else:
+        assert any(error.validator == "type" and list(error.path) == ["event"] for error in errors)

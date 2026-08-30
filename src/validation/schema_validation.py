@@ -4,12 +4,19 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator, FormatChecker, validators
 
 from .result import ValidationIssue
 
 DEFAULT_SCHEMA_PATH = (
     Path(__file__).resolve().parents[2] / "schemas" / "unified-event-v1.schema.json"
+)
+
+MappingDraft202012Validator = validators.extend(
+    Draft202012Validator,
+    type_checker=Draft202012Validator.TYPE_CHECKER.redefine(
+        "object", lambda _checker, instance: isinstance(instance, Mapping)
+    ),
 )
 
 
@@ -31,7 +38,7 @@ def validate_structure(
     schema: Mapping[str, Any] | None = None,
 ) -> tuple[ValidationIssue, ...]:
     active_schema = dict(schema) if schema is not None else load_schema()
-    validator = Draft202012Validator(active_schema, format_checker=FormatChecker())
+    validator = MappingDraft202012Validator(active_schema, format_checker=FormatChecker())
     errors = sorted(
         validator.iter_errors(event),
         key=lambda error: (tuple(str(part) for part in error.path), error.message),

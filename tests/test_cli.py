@@ -65,15 +65,10 @@ def test_cli_returns_one_and_prints_sorted_issues(tmp_path: Path, capsys) -> Non
     assert output.out == (
         f"INVALID: {invalid}\n"
         "- $ [required] 'action' is a required property\n"
-        "- $ [required] 'authentication' is a required property\n"
-        "- $ [required] 'destination' is a required property\n"
         "- $ [required] 'event' is a required property\n"
-        "- $ [required] 'network' is a required property\n"
         "- $ [required] 'observer' is a required property\n"
         "- $ [required] 'quality' is a required property\n"
         "- $ [required] 'severity' is a required property\n"
-        "- $ [required] 'source' is a required property\n"
-        "- $ [required] 'threat' is a required property\n"
         "- $ [required] 'time' is a required property\n"
         "- $ [required] 'traceability' is a required property\n"
     )

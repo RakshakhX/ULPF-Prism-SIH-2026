@@ -1,6 +1,8 @@
 import copy
 import json
 from pathlib import Path
+from types import MappingProxyType
+from typing import Any
 
 from src.validation.schema_validation import load_schema, validate_structure
 
@@ -11,8 +13,23 @@ def load_event() -> dict:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 
+def immutable_mappings(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType({key: immutable_mappings(child) for key, child in value.items()})
+    if isinstance(value, list):
+        return [immutable_mappings(child) for child in value]
+    return value
+
+
 def test_valid_event_has_no_structural_issues() -> None:
     assert validate_structure(load_event()) == ()
+
+
+def test_valid_event_accepts_recursively_immutable_mappings() -> None:
+    event = immutable_mappings(load_event())
+
+    assert validate_structure(event) == ()
+    assert validate_structure(event) == ()
 
 
 def test_missing_required_section_reports_json_path() -> None:

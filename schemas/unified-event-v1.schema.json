@@ -34,8 +34,10 @@
   "allOf": [
     {
       "if": {
+        "required": ["event"],
         "properties": {
           "event": {
+            "type": "object",
             "properties": {"category": {"const": "network"}},
             "required": ["category"]
           }
@@ -45,8 +47,10 @@
     },
     {
       "if": {
+        "required": ["event"],
         "properties": {
           "event": {
+            "type": "object",
             "properties": {"category": {"const": "intrusion_detection"}},
             "required": ["category"]
           }
@@ -56,8 +60,10 @@
     },
     {
       "if": {
+        "required": ["event"],
         "properties": {
           "event": {
+            "type": "object",
             "properties": {"category": {"const": "authentication"}},
             "required": ["category"]
           }
