@@ -46,3 +46,11 @@ def test_member_six_guide_locks_owner_and_work_sequence() -> None:
     assert "Epic 5" in content
     assert "Suggested child issues" in content
     assert "Do not commit directly to `main`" in content
+
+
+def test_ci_workflow_runs_project_quality_gates() -> None:
+    content = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "python -m pytest" in content
+    assert "python -m ruff format --check src tests" in content
+    assert "python -m ruff check src tests" in content
+    assert "contents: read" in content
