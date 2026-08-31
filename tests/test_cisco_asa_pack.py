@@ -1,6 +1,7 @@
 import pytest
-from core.models import ParseStatus
+
 from core.cisco_asa_pack import CiscoASASourcePack
+from core.models import ParseStatus
 
 
 @pytest.fixture
@@ -25,7 +26,11 @@ def test_detect_invalid_asa(pack):
 
 def test_parse_106023_success(pack):
     """Test full extraction of a known message ID (106023)."""
-    raw = b'<166>Oct 12 2023 14:23:01 asa-fw1 : %ASA-4-106023: Deny tcp src outside:203.0.113.5/54321 dst inside:10.0.0.5/443 by access-group "OUTSIDE_IN"'
+    raw = (
+        b"<166>Oct 12 2023 14:23:01 asa-fw1 : %ASA-4-106023: "
+        b"Deny tcp src outside:203.0.113.5/54321 "
+        b'dst inside:10.0.0.5/443 by access-group "OUTSIDE_IN"'
+    )
     event = pack.parse(raw)
 
     assert event.parse_status == ParseStatus.SUCCESS
