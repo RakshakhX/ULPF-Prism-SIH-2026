@@ -1,0 +1,128 @@
+# ULPF local benchmark environment.
+#
+# Bring it up:
+#   docker compose up -d redpanda redpanda-console
+#   docker compose up topic-init                     # one-shot, exits 0
+#   docker compose up -d --scale worker-parser=3 --scale worker-retry=2 \
+#       worker-parser worker-retry
+#   docker compose up -d load-gen
+#   docker compose logs -f metrics-report
+#
+# Scaling worker-parser (or worker-retry) with `--scale N` starts N
+# containers all sharing the same consumer group id (ulpf-parser-group /
+# ulpf-retry-handler-group, set via WORKER_GROUP_ID below), so Kafka's
+# group coordinator rebalances raw-event's 48 partitions across however
+# many replicas you run — exactly the "multiple worker replicas sharing
+# partitions" behavior this environment exists to exercise.
+#
+# Redpanda Console (http://localhost:8080) gives you a live view of
+# topics, partitions, consumer group lag, and lets you eyeball
+# dead-letter contents without writing a throwaway consumer script.
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: ulpf-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp=2
+      - --memory=2G
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+      - --pandaproxy-addr=PLAINTEXT://0.0.0.0:8082
+      - --advertise-pandaproxy-addr=PLAINTEXT://redpanda:8082
+    ports:
+      - "9092:9092"    # Kafka API (host access, e.g. for kcat/rpk from your laptop)
+      - "9644:9644"    # admin API / metrics
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.7.2
+    container_name: ulpf-console
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  topic-init:
+    build:
+      context: ..
+      dockerfile: files/Dockerfile
+    container_name: ulpf-topic-init
+    command: ["setup_topics.py", "--brokers", "redpanda:9092", "--replication-factor", "1"]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: "no"
+
+  worker-parser:
+    build:
+      context: ..
+      dockerfile: files/Dockerfile
+    command: ["worker.py", "--role", "parser", "--brokers", "redpanda:9092",
+               "--group-id", "ulpf-parser-group"]
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    deploy:
+      restart_policy:
+        condition: on-failure
+    stop_grace_period: 30s   # give SIGTERM handling room to flush + commit
+
+  worker-retry:
+    build:
+      context: ..
+      dockerfile: files/Dockerfile
+    command: ["worker.py", "--role", "retry-handler", "--brokers", "redpanda:9092",
+               "--group-id", "ulpf-retry-handler-group"]
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    deploy:
+      restart_policy:
+        condition: on-failure
+    stop_grace_period: 30s
+
+  load-gen:
+    build:
+      context: ..
+      dockerfile: files/Dockerfile
+    command:
+      - load_gen.py
+      - --brokers=redpanda:9092
+      - --sustained-eps=2000
+      - --burst-eps=15000
+      - --burst-every-seconds=60
+      - --burst-duration-seconds=5
+      - --malformed-pct=1.0
+      - --duplicate-pct=2.0
+      - --num-sources=500
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+
+  metrics-report:
+    build:
+      context: ..
+      dockerfile: files/Dockerfile
+    command: ["metrics_report.py", "--brokers", "redpanda:9092",
+               "--duration-seconds", "30", "--follow"]
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+
+volumes:
+  redpanda-data:
