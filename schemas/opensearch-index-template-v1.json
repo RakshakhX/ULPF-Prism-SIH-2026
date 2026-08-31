@@ -1,0 +1,190 @@
+{
+  "index_patterns": ["ulpf-events-v1-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "index.lifecycle.name": "ulpf-hot-warm-cold-policy",
+      "index.lifecycle.rollover_alias": "ulpf-events-v1",
+      "index.mapping.total_fields.limit": 2000,
+      "analysis": {
+        "analyzer": {
+          "security_message_analyzer": {
+            "type": "custom",
+            "tokenizer": "standard",
+            "filter": ["lowercase", "word_delimiter_graph"]
+          }
+        }
+      }
+    },
+    "mappings": {
+      "dynamic": "strict",
+      "properties": {
+        "schema_version": { "type": "keyword" },
+        "event": {
+          "properties": {
+            "id": { "type": "keyword" },
+            "kind": { "type": "keyword" },
+            "category": { "type": "keyword" },
+            "type": { "type": "keyword" },
+            "name": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+            },
+            "message": {
+              "type": "text",
+              "analyzer": "security_message_analyzer",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 1024 } }
+            }
+          }
+        },
+        "time": {
+          "properties": {
+            "observed_at": { "type": "date", "format": "strict_date_time" },
+            "ingested_at": { "type": "date", "format": "strict_date_time" },
+            "normalized_at": { "type": "date", "format": "strict_date_time" }
+          }
+        },
+        "observer": {
+          "properties": {
+            "vendor": { "type": "keyword" },
+            "product": { "type": "keyword" },
+            "type": { "type": "keyword" },
+            "hostname": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+            },
+            "serial_number": { "type": "keyword" },
+            "software_version": { "type": "keyword" }
+          }
+        },
+        "source": {
+          "properties": {
+            "ip": { "type": "ip" },
+            "port": { "type": "integer" },
+            "hostname": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+            },
+            "mac": { "type": "keyword" },
+            "user": {
+              "type": "keyword",
+              "fields": { "text": { "type": "text" } }
+            },
+            "interface": { "type": "keyword" }
+          }
+        },
+        "destination": {
+          "properties": {
+            "ip": { "type": "ip" },
+            "port": { "type": "integer" },
+            "hostname": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+            },
+            "mac": { "type": "keyword" },
+            "user": {
+              "type": "keyword",
+              "fields": { "text": { "type": "text" } }
+            },
+            "interface": { "type": "keyword" }
+          }
+        },
+        "network": {
+          "properties": {
+            "transport": { "type": "keyword" },
+            "application_protocol": { "type": "keyword" },
+            "direction": { "type": "keyword" },
+            "bytes": { "type": "long" },
+            "packets": { "type": "long" }
+          }
+        },
+        "action": {
+          "properties": {
+            "original": { "type": "keyword" },
+            "normalized": { "type": "keyword" },
+            "outcome": { "type": "keyword" },
+            "reason": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 512 } }
+            }
+          }
+        },
+        "severity": {
+          "properties": {
+            "original": { "type": "keyword" },
+            "normalized": { "type": "byte" },
+            "label": { "type": "keyword" }
+          }
+        },
+        "threat": {
+          "properties": {
+            "name": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+            },
+            "signature_id": { "type": "keyword" },
+            "category": { "type": "keyword" },
+            "confidence": { "type": "float" }
+          }
+        },
+        "authentication": {
+          "properties": {
+            "user": { "type": "keyword" },
+            "method": { "type": "keyword" },
+            "result": { "type": "keyword" },
+            "failure_reason": { "type": "text" }
+          }
+        },
+        "http": {
+          "properties": {
+            "method": { "type": "keyword" },
+            "host": { "type": "keyword" },
+            "path": {
+              "type": "text",
+              "fields": { "keyword": { "type": "keyword", "ignore_above": 1024 } }
+            },
+            "status_code": { "type": "short" },
+            "user_agent": { "type": "text" }
+          }
+        },
+        "traceability": {
+          "properties": {
+            "raw_event_id": { "type": "keyword" },
+            "raw_sha256": { "type": "keyword" },
+            "source_pack": {
+              "properties": {
+                "name": { "type": "keyword" },
+                "version": { "type": "keyword" }
+              }
+            },
+            "parser": {
+              "properties": {
+                "name": { "type": "keyword" },
+                "version": { "type": "keyword" }
+              }
+            },
+            "raw_event": {
+              "properties": {
+                "encoding": { "type": "keyword" },
+                "content_type": { "type": "keyword" },
+                "content": { "type": "text", "index": false }
+              }
+            }
+          }
+        },
+        "quality": {
+          "properties": {
+            "status": { "type": "keyword" },
+            "parsing_confidence": { "type": "float" },
+            "missing_fields": { "type": "keyword" },
+            "warnings": { "type": "keyword" }
+          }
+        },
+        "extensions": {
+          "type": "flattened"
+        }
+      }
+    }
+  }
+}

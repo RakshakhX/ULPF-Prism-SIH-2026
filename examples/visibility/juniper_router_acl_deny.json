@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0.0",
+  "event": {
+    "id": "4a5b6c7d-18d8-43fb-8ecf-95a6b7c8d9e0",
+    "kind": "event",
+    "category": "network",
+    "type": "acl_match",
+    "name": "Router ACL denied packet",
+    "message": "PFE_FW_SYSLOG_ETH: FW: ge-0/0/1.0 D 203.0.113.60 192.0.2.60 UDP 5353 53 (EDGE_FILTER term BLOCK_MDNS)"
+  },
+  "time": {
+    "observed_at": "2026-08-30T10:40:30Z",
+    "ingested_at": "2026-08-30T10:40:31Z",
+    "normalized_at": "2026-08-30T10:40:32Z"
+  },
+  "source": {
+    "ip": "203.0.113.60",
+    "port": 5353,
+    "interface": "ge-0/0/1.0"
+  },
+  "destination": {
+    "ip": "192.0.2.60",
+    "port": 53
+  },
+  "observer": {
+    "vendor": "juniper",
+    "product": "srx_series",
+    "type": "router",
+    "hostname": "core-gw-junos01",
+    "serial_number": "JN10827364AA",
+    "software_version": "21.4R3"
+  },
+  "network": {
+    "transport": "udp",
+    "application_protocol": "dns",
+    "direction": "inbound",
+    "bytes": 0,
+    "packets": 1
+  },
+  "action": {
+    "original": "D",
+    "normalized": "deny",
+    "outcome": "failure",
+    "reason": "Filtered by term BLOCK_MDNS"
+  },
+  "severity": {
+    "original": "6",
+    "normalized": 4,
+    "label": "medium"
+  },
+  "traceability": {
+    "raw_event_id": "5b6c7d8e-29e9-440c-9fd0-a6b7c8d9e0f1",
+    "raw_sha256": "846fc8f8634eb9e52676132963945d2121bdb6d7c16c38f9432ba3110f889a5d",
+    "source_pack": {
+      "name": "juniper_junos_pack",
+      "version": "1.0.0"
+    },
+    "parser": {
+      "name": "junos_syslog_parser",
+      "version": "1.0.0"
+    }
+  },
+  "quality": {
+    "status": "valid",
+    "parsing_confidence": 1.0,
+    "missing_fields": [],
+    "warnings": []
+  },
+  "extensions": {
+    "juniper": {
+      "filter_name": "EDGE_FILTER",
+      "term_name": "BLOCK_MDNS",
+      "packet_action": "discard"
+    }
+  }
+}
