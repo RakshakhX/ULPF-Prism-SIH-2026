@@ -1,0 +1,9 @@
+{
+  "udp_host": "0.0.0.0",
+  "udp_port": 5514,
+  "tcp_host": "0.0.0.0",
+  "tcp_port": 5601,
+  "max_event_size_bytes": 65536,
+  "archive_dir": "archive_store",
+  "stream_file": "raw_event_stream.ndjson"
+}

@@ -1,0 +1,5 @@
+
+%ASA-6-106100: access-list OUTSIDE_IN permitted tcp outside/203.0.113.10
+<166>Jan 15 2026 %ASA-6-106100
+garbage-not-a-syslog-line ??? ###
+<166>Jan 15 2026 10:05:00 asa-fw01 %ASA-6-302013: Built inbound TCP connection for outside: (truncated
