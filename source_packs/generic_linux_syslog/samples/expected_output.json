@@ -1,0 +1,19 @@
+{
+  "_comment": "Expected `fields` output of GenericLinuxSyslogPack.parse() for line 1 of sample.log",
+  "source_line": "<34>Oct 11 22:14:15 mymachine sshd[1234]: Failed password for invalid user admin from 203.0.113.5 port 51514 ssh2",
+  "vendor": "Generic",
+  "product": "Linux Syslog (rsyslog/syslog-ng)",
+  "format_detected": "syslog",
+  "fields": {
+    "timestamp": "Oct 11 22:14:15",
+    "hostname": "mymachine",
+    "process": "sshd",
+    "pid": "1234",
+    "message": "Failed password for invalid user admin from 203.0.113.5 port 51514 ssh2",
+    "syslog_facility": 4,
+    "severity": 2,
+    "syslog_variant": "rfc3164",
+    "syslog_facility_name": "auth"
+  },
+  "status": "success"
+}

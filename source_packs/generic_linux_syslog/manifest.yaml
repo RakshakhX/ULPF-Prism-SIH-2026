@@ -1,0 +1,86 @@
+# =============================================================================
+# ULPF Source Pack Manifest
+# Pack: generic_linux_syslog
+# =============================================================================
+
+pack:
+  vendor: "Generic"
+  product: "Linux Syslog (rsyslog/syslog-ng)"
+  pack_version: "1.0.0"
+  supported_product_versions:
+    - "RHEL 7/8/9"
+    - "Ubuntu 18.04+"
+    - "Debian 10+"
+  author:
+    name: "ULPF Core Team"
+    email: "log-engineering@example.com"
+    organization: "Example Corp — Security Data Engineering"
+  description: >
+    Parses standard RFC3164 / RFC5424 Linux syslog output (sshd, sudo, cron,
+    systemd, kernel, etc). Intended as the reference/template implementation
+    for new Source Packs.
+  documentation: "docs/README.md"
+
+# -----------------------------------------------------------------------------
+# Source detection: how the engine decides this pack owns a given event.
+# Rules are OR'd together; the first rule that matches is sufficient.
+# `priority` breaks ties across packs — higher wins when multiple packs match.
+# -----------------------------------------------------------------------------
+detection:
+  priority: 10
+  rules:
+    - type: regex
+      target: raw_payload
+      pattern: '^<\d{1,3}>(\d\s)?[A-Za-z0-9:\-\.]+'
+    - type: keyword
+      target: raw_payload
+      any_of: ["sshd", "CRON", "systemd", "sudo", "kernel:"]
+
+# -----------------------------------------------------------------------------
+# Supported log format + any options passed to the format parser.
+# -----------------------------------------------------------------------------
+format:
+  type: syslog
+
+# -----------------------------------------------------------------------------
+# Field extraction rules. `source` is a dotted path into whatever dict the
+# format parser returns (see core/parsers/syslog.py output keys).
+# -----------------------------------------------------------------------------
+fields:
+  - name: timestamp
+    source: timestamp
+    type: string
+  - name: hostname
+    source: hostname
+    type: string
+    required: true
+  - name: process
+    source: appname
+    type: string
+  - name: pid
+    source: procid
+    type: string
+  - name: message
+    source: message
+    type: string
+    required: true
+  - name: syslog_facility
+    source: facility
+    type: integer
+  - name: severity
+    source: severity_code
+    type: integer
+    default: "unknown"
+  - name: syslog_variant
+    source: variant
+    type: string
+
+# -----------------------------------------------------------------------------
+# Samples & tests referenced by this pack (paths relative to this manifest).
+# -----------------------------------------------------------------------------
+samples:
+  raw_log: "samples/sample.log"
+  expected_output: "samples/expected_output.json"
+
+tests:
+  - "tests/test_pack.py"

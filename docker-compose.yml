@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  ulpf-engine:
+    build: .
+    image: ulpf-engine:latest
+    container_name: ulpf-engine
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount source_packs read-write in dev so new/edited packs are picked
+      # up via POST /packs/reload without rebuilding the image.
+      - ./source_packs:/app/source_packs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
