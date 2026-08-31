@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0.0",
+  "event": {
+    "id": "c2d6e3f4-9a50-4b73-8c48-1d2e3f405162",
+    "kind": "event",
+    "category": "network",
+    "type": "connection",
+    "name": "Firewall traffic denied",
+    "message": "%ASA-4-106023: Deny tcp src outside:203.0.113.11/49321 dst inside:198.51.100.21/22 by access-group 'outside_in'"
+  },
+  "time": {
+    "observed_at": "2026-08-30T10:20:30Z",
+    "ingested_at": "2026-08-30T10:20:31Z",
+    "normalized_at": "2026-08-30T10:20:32Z"
+  },
+  "source": {
+    "ip": "203.0.113.11",
+    "port": 49321,
+    "interface": "outside"
+  },
+  "destination": {
+    "ip": "198.51.100.21",
+    "port": 22,
+    "interface": "inside"
+  },
+  "observer": {
+    "vendor": "cisco",
+    "product": "asa",
+    "type": "firewall",
+    "hostname": "edge-fw-01",
+    "serial_number": "FOC1938290X",
+    "software_version": "9.16.4"
+  },
+  "network": {
+    "transport": "tcp",
+    "application_protocol": "ssh",
+    "direction": "inbound",
+    "bytes": 0,
+    "packets": 1
+  },
+  "action": {
+    "original": "Deny",
+    "normalized": "deny",
+    "outcome": "failure",
+    "reason": "Denied by access-group 'outside_in'"
+  },
+  "severity": {
+    "original": "4",
+    "normalized": 5,
+    "label": "medium"
+  },
+  "traceability": {
+    "raw_event_id": "d3e7f405-a161-4c84-9d59-2e3f40516273",
+    "raw_sha256": "7ae0bc1f3e2529e582c1451bf51a00b4f41a0627d0a6ba5b5bc57117fa5f1ed5",
+    "source_pack": {
+      "name": "cisco_asa_pack",
+      "version": "1.0.0"
+    },
+    "parser": {
+      "name": "cisco_asa_syslog_parser",
+      "version": "1.0.0"
+    }
+  },
+  "quality": {
+    "status": "valid",
+    "parsing_confidence": 1.0,
+    "missing_fields": [],
+    "warnings": []
+  },
+  "extensions": {
+    "cisco_asa": {
+      "message_id": "106023",
+      "access_group": "outside_in"
+    }
+  }
+}
