@@ -25,6 +25,18 @@ from pydantic import BaseModel, Field, field_validator
 # --------------------------------------------------------------------------
 # Enums
 # --------------------------------------------------------------------------
+from enum import Enum
+
+class ParseStatus(str, Enum):
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    UNRECOGNIZED = "unrecognized"
+
+class ParseErrorSeverity(str, Enum):
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
 
 class LogFormat(str, enum.Enum):
     SYSLOG = "syslog"
