@@ -35,11 +35,8 @@ def test_engine_loads_packs():
 def test_engine_routes_syslog_to_generic_pack():
     engine = _engine()
     envelope = RawEventEnvelope(
-    raw_payload=(
-        "<34>Oct 11 22:14:15 mymachine sshd[1234]: "
-        "Failed password for invalid user admin"
+        raw_payload="<34>Oct 11 22:14:15 mymachine sshd[1234]: Failed password for invalid user admin"  # noqa: E501
     )
-)
     result = engine.process(envelope)
     assert result.status == ParsingStatus.SUCCESS
     assert result.source_pack_id == "generic_linux_syslog"
