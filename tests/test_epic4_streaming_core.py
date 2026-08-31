@@ -59,7 +59,9 @@ def test_metrics_summary_computes_expected_values():
         },
     }
 
-    summary = load_gen.summarize_metrics_window if hasattr(load_gen, "summarize_metrics_window") else None
+    summary = (
+        load_gen.summarize_metrics_window if hasattr(load_gen, "summarize_metrics_window") else None
+    )
     if summary is None:
         pytest = __import__("pytest")
         pytest.skip("summarize_metrics_window unavailable in this generator build")
