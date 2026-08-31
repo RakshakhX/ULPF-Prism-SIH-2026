@@ -65,6 +65,7 @@ def test_engine_never_raises_on_garbage_input():
 
 # ---- Individual format parser sanity checks --------------------------------
 
+
 def test_json_parser():
     parser = JSONFormatParser()
     data = parser.parse('{"user": "alice", "action": "login"}')
@@ -87,7 +88,9 @@ def test_kv_parser():
 
 def test_csv_parser_with_columns():
     parser = CSVFormatParser()
-    data = parser.parse("2026-08-31,alice,login,success", columns=["date", "user", "action", "result"])
+    data = parser.parse(
+        "2026-08-31,alice,login,success", columns=["date", "user", "action", "result"]
+    )
     assert data["user"] == "alice"
     assert data["result"] == "success"
 
@@ -113,7 +116,9 @@ def test_regex_parser():
     parser = RegexFormatParser()
     data = parser.parse(
         "USER=jsmith ACTION=DELETE_RECORD TABLE=customers ROWID=88231",
-        patterns=[r"USER=(?P<user>\w+)\s+ACTION=(?P<action>\w+)\s+TABLE=(?P<table>\w+)\s+ROWID=(?P<row_id>\d+)"],
+        patterns=[
+            r"USER=(?P<user>\w+)\s+ACTION=(?P<action>\w+)\s+TABLE=(?P<table>\w+)\s+ROWID=(?P<row_id>\d+)"
+        ],
     )
     assert data["user"] == "jsmith"
     assert data["row_id"] == "88231"
