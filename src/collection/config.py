@@ -12,7 +12,7 @@ class AppConfig:
     max_event_size_bytes: int = 65536
     archive_dir: str = "archive_store"
     stream_file: str = "raw_event_stream.ndjson"
-    resolve_source_id: bool = False   # off by default: reverse DNS adds latency
+    resolve_source_id: bool = False  # off by default: reverse DNS adds latency
     reverse_dns_timeout: float = 0.3
 
     @classmethod

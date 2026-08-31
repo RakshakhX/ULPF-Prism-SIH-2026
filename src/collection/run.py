@@ -1,4 +1,5 @@
 """Wires the UDP + TCP collectors to the shared pipeline, publisher, archive."""
+
 from pathlib import Path
 
 from .archive import RawEventArchive

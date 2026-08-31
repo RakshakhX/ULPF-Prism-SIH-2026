@@ -43,9 +43,7 @@ class TCPCollector:
 
     def _handle_conn(self, conn: socket.socket, addr) -> None:
         source_id = (
-            resolve_source_id(addr[0], self.dns_timeout)
-            if self.resolve_source_id_flag
-            else None
+            resolve_source_id(addr[0], self.dns_timeout) if self.resolve_source_id_flag else None
         )
         buffer = b""
         with conn:

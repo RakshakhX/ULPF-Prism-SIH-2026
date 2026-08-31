@@ -25,7 +25,7 @@ class RejectedEventRecord:
     source_id: str | None
     reason: str
     raw_size: int
-    raw_sample: str          # first N bytes, decoded best-effort, for evidence
+    raw_sample: str  # first N bytes, decoded best-effort, for evidence
     sample_truncated: bool
     metadata: dict[str, Any] = field(default_factory=dict)
 

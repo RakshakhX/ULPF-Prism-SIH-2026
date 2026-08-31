@@ -6,13 +6,13 @@ from typing import Any
 @dataclass(frozen=True)
 class RawEventEnvelope:
     event_id: str
-    ingested_at: str          # ISO 8601 UTC, ends in Z
+    ingested_at: str  # ISO 8601 UTC, ends in Z
     source_id: str | None
     source_ip: str | None
-    transport: str            # "udp" | "tcp" | "file"
+    transport: str  # "udp" | "tcp" | "file"
     raw_event: bytes
     raw_size: int
-    content_hash: str         # lowercase sha256 hex
+    content_hash: str  # lowercase sha256 hex
     collector_id: str
     collector_version: str
     metadata: dict[str, Any] = field(default_factory=dict)
