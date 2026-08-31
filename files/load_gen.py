@@ -150,17 +150,18 @@ def corrupt(line: str) -> str:
         return line[:cut]
     if mode == "garbage_field":
         parts = line.split(",")
-        if len(parts) > 5:
-            idx = random.randint(1, len(parts) - 1)
+        if len(parts) > 1:
+            idx = random.randint(0, len(parts) - 1)
             parts[idx] = "".join(random.choices(string.punctuation, k=6))
-        return ",".join(parts)
+            return ",".join(parts)
+        return line + ",###GARBAGE###"
     if mode == "encoding":
         return line + "\xff\xfe\x00broken"
     if mode == "empty":
         return ""
     if mode == "wrong_header":
         return line.replace("<134>1", "NOT-A-SYSLOG-HEADER", 1)
-    return line
+    return line + "_corrupted"
 
 
 class RateController:
