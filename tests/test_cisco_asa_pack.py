@@ -11,7 +11,11 @@ def pack():
 
 def test_detect_valid_asa(pack):
     """Test that the pack correctly identifies a Cisco ASA syslog message."""
-    raw = b'<166>Oct 12 2023 14:23:01 asa-fw1 : %ASA-4-106023: Deny tcp src outside:10.0.0.1/123 dst inside:10.0.0.2/456 by access-group "OUT"'
+    raw = (
+        b"<166>Oct 12 2023 14:23:01 asa-fw1 : %ASA-4-106023: "
+        b'Deny tcp src outside:10.0.0.1/123 dst inside:10.0.0.2/456 '
+        b'by access-group "OUT"'
+    )
     result = pack.detect(raw)
     assert result.matched is True
     assert result.confidence > 0.90
