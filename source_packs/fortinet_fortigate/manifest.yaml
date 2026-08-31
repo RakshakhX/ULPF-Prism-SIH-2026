@@ -1,0 +1,210 @@
+# =============================================================================
+# ULPF Source Pack Manifest
+# Pack: fortinet_fortigate
+# =============================================================================
+
+pack:
+  vendor: "Fortinet"
+  product: "FortiGate"
+  pack_version: "1.0.0"
+  supported_versions:
+    - "FortiOS 6.4"
+    - "FortiOS 7.0"
+    - "FortiOS 7.2"
+    - "FortiOS 7.4"
+  author:
+    name: "ULPF Core Team"
+    email: "log-engineering@example.com"
+    organization: "Example Corp — Security Data Engineering"
+  description: >
+    Parses standard FortiGate syslog output in native key=value format,
+    covering traffic (forward/local), UTM (virus, webfilter, ips,
+    app-ctrl), and event (system, vpn, ha) log categories.
+  documentation: "docs/README.md"
+
+# -----------------------------------------------------------------------------
+# Source detection: how the engine decides this pack owns a given event.
+# FortiGate's native key=value log format always includes `devname=` and/or
+# `devid=` near the start of the record, plus a 10-digit `logid=` code.
+# Rules are OR'd; any single match is sufficient. `priority` is set above
+# the generic syslog pack (10) since FortiGate KV logs are highly specific
+# and should win over a generic fallback pack even if both could match.
+# -----------------------------------------------------------------------------
+detection:
+  priority: 60
+  rules:
+    - type: keyword
+      target: raw_payload
+      any_of: ["devname=", "devid="]
+    - type: regex
+      target: raw_payload
+      pattern: 'logid="?\d{10}"?'
+
+# -----------------------------------------------------------------------------
+# Format: FortiGate syslog is native key=value (space-separated tokens,
+# quoted values may contain spaces). No CEF/JSON wrapping in the standard
+# configuration this pack targets.
+# -----------------------------------------------------------------------------
+format:
+  type: key_value
+
+# -----------------------------------------------------------------------------
+# Field extraction rules. `source` is the raw FortiGate key exactly as it
+# appears in the log (case-sensitive). Fields absent from a given log line
+# resolve to `default` (null unless stated) rather than causing failures —
+# FortiGate's field set varies significantly by log `type`/`subtype`.
+# `timestamp` and `severity`/`host` promotion are refined further in
+# pack.py (see GenericLinuxSyslogPack-style override pattern), since
+# FortiGate splits date/time across two fields and uses syslog-style
+# severity *names* rather than numeric codes.
+# -----------------------------------------------------------------------------
+fields:
+  # Identity / routing
+  - name: timestamp
+    source: eventtime
+    type: string
+  - name: hostname
+    source: devname
+    type: string
+    required: true
+  - name: device_id
+    source: devid
+    type: string
+  - name: log_id
+    source: logid
+    type: string
+  - name: vdom
+    source: vd
+    type: string
+
+  # Event classification
+  - name: event_type
+    source: type
+    type: string
+    required: true
+  - name: event_subtype
+    source: subtype
+    type: string
+  - name: level
+    source: level
+    type: string
+  - name: action
+    source: action
+    type: string
+  - name: reason
+    source: reason
+    type: string
+  - name: status
+    source: status
+    type: string
+
+  # Network 5-tuple (traffic / utm / ips)
+  - name: src_ip
+    source: srcip
+    type: string
+  - name: src_port
+    source: srcport
+    type: integer
+  - name: src_intf
+    source: srcintf
+    type: string
+  - name: dst_ip
+    source: dstip
+    type: string
+  - name: dst_port
+    source: dstport
+    type: integer
+  - name: dst_intf
+    source: dstintf
+    type: string
+  - name: protocol
+    source: proto
+    type: integer
+  - name: src_country
+    source: srccountry
+    type: string
+  - name: dst_country
+    source: dstcountry
+    type: string
+
+  # Policy / session (traffic)
+  - name: policy_id
+    source: policyid
+    type: string
+  - name: policy_name
+    source: policyname
+    type: string
+  - name: service
+    source: service
+    type: string
+  - name: session_id
+    source: sessionid
+    type: string
+  - name: duration
+    source: duration
+    type: integer
+  - name: sent_bytes
+    source: sentbyte
+    type: integer
+  - name: rcvd_bytes
+    source: rcvdbyte
+    type: integer
+  - name: sent_pkts
+    source: sentpkt
+    type: integer
+  - name: rcvd_pkts
+    source: rcvdpkt
+    type: integer
+
+  # Free-text / description
+  - name: message
+    source: msg
+    type: string
+  - name: log_description
+    source: logdesc
+    type: string
+  - name: user
+    source: user
+    type: string
+
+  # UTM: antivirus
+  - name: virus_name
+    source: virus
+    type: string
+  - name: virus_id
+    source: virusid
+    type: string
+  - name: filename
+    source: filename
+    type: string
+
+  # UTM: webfilter
+  - name: url
+    source: url
+    type: string
+
+  # UTM: IPS
+  - name: attack_signature
+    source: attack
+    type: string
+
+  # UTM: application control
+  - name: app_name
+    source: app
+    type: string
+  - name: app_category
+    source: appcat
+    type: string
+  - name: app_risk
+    source: apprisk
+    type: string
+
+# -----------------------------------------------------------------------------
+# Samples & tests referenced by this pack (paths relative to this manifest).
+# -----------------------------------------------------------------------------
+samples:
+  raw_logs: "samples/raw_logs.txt"
+  expected_outputs: "samples/expected_outputs.json"
+
+tests:
+  - "tests/test_pack.py"

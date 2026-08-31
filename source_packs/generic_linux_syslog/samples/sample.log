@@ -1,0 +1,3 @@
+<34>Oct 11 22:14:15 mymachine sshd[1234]: Failed password for invalid user admin from 203.0.113.5 port 51514 ssh2
+<86>Oct 11 22:15:02 webserver01 CRON[5678]: (root) CMD (/usr/bin/certbot renew --quiet)
+<38>Oct 11 22:16:40 dbhost01 sudo: pam_unix(sudo:session): session opened for user postgres by root(uid=0)
