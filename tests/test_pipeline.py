@@ -14,7 +14,11 @@ def pipeline(tmp_path: Path) -> CollectionPipeline:
     publisher = InMemoryPublisher()
     archive = RawEventArchive(tmp_path / "archive")
     rejected_log = RejectedEventLog(tmp_path / "rejected")
-    cfg = CollectorConfig(max_event_size_bytes=100)
+    cfg = CollectorConfig(
+        max_event_size_bytes=100,
+        dedup_max_entries=64,
+        latency_window_size=128,
+    )
     return CollectionPipeline(
         publisher=publisher, archive=archive, rejected_log=rejected_log, config=cfg
     )
@@ -25,14 +29,14 @@ def test_accepts_normal_event_with_id_and_hash(pipeline: CollectionPipeline):
     result = pipeline.ingest(raw=raw, transport="tcp", source_ip="1.2.3.4")
     assert result.accepted
     assert result.envelope.event_id
-    assert result.envelope.content_hash == sha256_hex(raw)
-    assert result.envelope.raw_event == raw
+    assert result.envelope.raw_sha256 == sha256_hex(raw)
+    assert result.envelope.raw_bytes() == raw
 
 
 def test_recomputed_hash_matches_stored_hash(pipeline: CollectionPipeline):
     raw = b"some raw event bytes"
-    result = pipeline.ingest(raw=raw, transport="udp")
-    assert sha256_hex(result.envelope.raw_event) == result.envelope.content_hash
+    result = pipeline.ingest(raw=raw, transport="udp", source_id="fixture")
+    assert sha256_hex(result.envelope.raw_bytes()) == result.envelope.raw_sha256
 
 
 def test_empty_event_rejected_with_reason(pipeline: CollectionPipeline):
@@ -61,26 +65,26 @@ def test_duplicate_event_is_preserved_not_dropped(pipeline: CollectionPipeline):
 def test_unicode_and_special_chars_preserved(pipeline: CollectionPipeline):
     raw = "unicode 漢字 emoji 🔥".encode()
     result = pipeline.ingest(raw=raw, transport="file")
-    assert result.envelope.raw_event == raw
+    assert result.envelope.raw_bytes() == raw
 
 
 def test_malformed_bytes_do_not_crash_pipeline(pipeline: CollectionPipeline):
     raw = b"\xff\xfe\x00garbage-not-utf8"
     result = pipeline.ingest(raw=raw, transport="tcp")
     assert result.accepted
-    assert result.envelope.raw_event == raw
+    assert result.envelope.raw_bytes() == raw
 
 
 def test_accepted_event_is_published_and_archived(pipeline: CollectionPipeline, tmp_path):
     raw = b"published and archived"
     result = pipeline.ingest(raw=raw, transport="udp")
     messages = pipeline.publisher.messages()
-    assert any(m["event_id"] == result.envelope.event_id for m in messages)
+    assert any(m["event_id"] == str(result.envelope.event_id) for m in messages)
     retrieved = pipeline.archive.retrieve(result.envelope.event_id)
     assert retrieved is not None
     meta, raw_bytes = retrieved
     assert raw_bytes == raw
-    assert meta["content_hash"] == result.envelope.content_hash
+    assert meta["raw_sha256"] == result.envelope.raw_sha256
 
 
 def test_metrics_counts(pipeline: CollectionPipeline):

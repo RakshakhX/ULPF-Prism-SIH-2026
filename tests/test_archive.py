@@ -1,20 +1,15 @@
 from pathlib import Path
 
 from src.collection.archive import RawEventArchive
-from src.collection.envelope import RawEventEnvelope, utc_now_iso
-from src.collection.hashing import sha256_hex
+from src.contracts import RawEventEnvelope
 
 
-def make_envelope(raw: bytes, event_id: str = "abc-123") -> RawEventEnvelope:
-    return RawEventEnvelope(
-        event_id=event_id,
-        ingested_at=utc_now_iso(),
+def make_envelope(raw: bytes) -> RawEventEnvelope:
+    return RawEventEnvelope.from_bytes(
+        raw,
         source_id="s1",
         source_ip="10.0.0.1",
         transport="tcp",
-        raw_event=raw,
-        raw_size=len(raw),
-        content_hash=sha256_hex(raw),
         collector_id="c1",
         collector_version="0.1.0",
     )
@@ -27,7 +22,7 @@ def test_store_and_retrieve_by_event_id(tmp_path: Path):
 
     meta, raw = archive.retrieve(env.event_id)
     assert raw == b"archive me"
-    assert meta["event_id"] == env.event_id
+    assert meta["event_id"] == str(env.event_id)
 
 
 def test_verify_detects_intact_data(tmp_path: Path):

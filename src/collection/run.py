@@ -15,7 +15,11 @@ def build_pipeline(cfg: AppConfig) -> CollectionPipeline:
     publisher = FileStreamPublisher(Path(cfg.stream_file))
     archive = RawEventArchive(Path(cfg.archive_dir))
     rejected_log = RejectedEventLog(Path(cfg.archive_dir) / "rejected")
-    pipeline_cfg = CollectorConfig(max_event_size_bytes=cfg.max_event_size_bytes)
+    pipeline_cfg = CollectorConfig(
+        max_event_size_bytes=cfg.max_event_size_bytes,
+        dedup_max_entries=cfg.dedup_max_entries,
+        latency_window_size=cfg.latency_window_size,
+    )
     return CollectionPipeline(
         publisher=publisher,
         archive=archive,

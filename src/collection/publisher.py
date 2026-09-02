@@ -3,7 +3,7 @@ import threading
 from pathlib import Path
 from typing import Protocol
 
-from .envelope import RawEventEnvelope
+from src.contracts import RawEventEnvelope
 
 RAW_EVENT_TOPIC = "raw-event-stream"  # agreed shared topic name
 
@@ -22,7 +22,7 @@ class InMemoryPublisher:
 
     def publish(self, envelope: RawEventEnvelope) -> None:
         with self._lock:
-            self._messages.append(envelope.to_dict())
+            self._messages.append(envelope.model_dump(mode="json"))
 
     def messages(self) -> list[dict]:
         with self._lock:
@@ -39,7 +39,7 @@ class FileStreamPublisher:
         self._lock = threading.Lock()
 
     def publish(self, envelope: RawEventEnvelope) -> None:
-        line = json.dumps(envelope.to_dict(), ensure_ascii=False)
+        line = json.dumps(envelope.model_dump(mode="json"), ensure_ascii=False)
         with self._lock:
             with self.stream_path.open("a", encoding="utf-8") as f:
                 f.write(line + "\n")

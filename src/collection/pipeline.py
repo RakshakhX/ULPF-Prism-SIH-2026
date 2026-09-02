@@ -2,9 +2,10 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from src.contracts import RawEventEnvelope
+
 from .archive import RawEventArchive
-from .envelope import RawEventEnvelope, utc_now_iso
-from .hashing import new_event_id, sha256_hex
+from .dedup import BoundedHashCache
 from .metrics import CollectorMetrics
 from .publisher import RawEventPublisher
 from .rejected import RejectedEventLog
@@ -24,6 +25,8 @@ class IngestResult:
 @dataclass
 class CollectorConfig:
     max_event_size_bytes: int = 65536
+    dedup_max_entries: int = 10000
+    latency_window_size: int = 128
 
 
 class CollectionPipeline:
@@ -43,8 +46,14 @@ class CollectionPipeline:
         self.archive = archive
         self.rejected_log = rejected_log
         self.config = config or CollectorConfig()
-        self.metrics = metrics or CollectorMetrics()
-        self._seen_hashes: set[str] = set()
+        self.metrics = metrics or CollectorMetrics(
+            latency_window_size=self.config.latency_window_size
+        )
+        self._seen_hashes = BoundedHashCache(self.config.dedup_max_entries)
+
+    @property
+    def dedup_size(self) -> int:
+        return len(self._seen_hashes)
 
     def ingest(
         self,
@@ -76,27 +85,35 @@ class CollectionPipeline:
             self.metrics.record_latency(start)
             return IngestResult(accepted=False, envelope=None, reason=reason)
 
-        content_hash = sha256_hex(raw)
-        is_duplicate = content_hash in self._seen_hashes
-        self._seen_hashes.add(content_hash)
-
-        envelope = RawEventEnvelope(
-            event_id=new_event_id(),
-            ingested_at=utc_now_iso(),
-            source_id=source_id,
+        envelope = RawEventEnvelope.from_bytes(
+            raw,
+            source_id=source_id or source_ip or "unknown",
             source_ip=source_ip,
             transport=transport,
-            raw_event=raw,
-            raw_size=size,
-            content_hash=content_hash,
             collector_id=COLLECTOR_ID,
             collector_version=COLLECTOR_VERSION,
-            metadata={**(metadata or {}), "duplicate": is_duplicate},
+            metadata=metadata,
+        )
+        is_duplicate = self._seen_hashes.check_and_add(envelope.raw_sha256)
+        envelope = envelope.model_copy(
+            update={"metadata": {**envelope.metadata, "duplicate": is_duplicate}}
         )
 
         # Duplicates are still preserved as full evidence, never silently dropped.
-        self.publisher.publish(envelope)
-        self.archive.store(envelope)
+        try:
+            self.archive.store(envelope)
+        except Exception:
+            self.metrics.record_rejected()
+            self.metrics.record_latency(start)
+            return IngestResult(accepted=False, envelope=envelope, reason="archive_failed")
+
+        try:
+            self.publisher.publish(envelope)
+        except Exception:
+            self.metrics.record_rejected()
+            self.metrics.record_latency(start)
+            return IngestResult(accepted=False, envelope=envelope, reason="publish_failed")
+
         self.metrics.record_accepted()
         if is_duplicate:
             self.metrics.record_duplicate()

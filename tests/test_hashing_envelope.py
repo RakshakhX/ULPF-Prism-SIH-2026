@@ -1,5 +1,5 @@
-from src.collection.envelope import RawEventEnvelope, utc_now_iso
 from src.collection.hashing import new_event_id, sha256_hex, verify_hash
+from src.contracts import RawEventEnvelope
 
 
 def test_sha256_deterministic():
@@ -22,24 +22,15 @@ def test_event_id_unique():
     assert new_event_id() != new_event_id()
 
 
-def test_ingested_at_is_utc_z_suffixed():
-    ts = utc_now_iso()
-    assert ts.endswith("Z")
-
-
 def test_envelope_roundtrip_preserves_unicode():
     raw = "unicode: 漢字, emoji: 🔥, special: ñ".encode()
-    env = RawEventEnvelope(
-        event_id="e1",
-        ingested_at=utc_now_iso(),
+    env = RawEventEnvelope.from_bytes(
+        raw,
         source_id="s1",
         source_ip="10.0.0.1",
         transport="udp",
-        raw_event=raw,
-        raw_size=len(raw),
-        content_hash=sha256_hex(raw),
         collector_id="c1",
         collector_version="0.1.0",
     )
-    d = env.to_dict()
-    assert d["raw_event"].encode("utf-8") == raw
+    restored = RawEventEnvelope.model_validate_json(env.model_dump_json())
+    assert restored.raw_bytes() == raw
