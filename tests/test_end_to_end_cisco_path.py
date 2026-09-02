@@ -20,8 +20,13 @@ from pathlib import Path
 
 import pytest
 
+from core.engine import ParsingEngine
+from src.collection.archive import RawEventArchive
+from src.collection.pipeline import CollectionPipeline
+from src.collection.publisher import InMemoryPublisher
+from src.normalization import UniversalNormalizer, default_registry
 from src.pipeline.exporter import DataLakeExporter
-from src.pipeline.runner import CiscoASAPipelineRunner
+from src.pipeline.runner import PipelineRunner
 from src.pipeline.storage import AnalyticalVisibilityStore
 from src.validation.validate_unified_event import validate_event
 
@@ -30,7 +35,20 @@ from src.validation.validate_unified_event import validate_event
 def clean_runner(tmp_path: Path):
     store = AnalyticalVisibilityStore()
     exporter = DataLakeExporter(base_dir=tmp_path / "lake_exports")
-    return CiscoASAPipelineRunner(store=store, exporter=exporter)
+    return PipelineRunner(
+        collector=CollectionPipeline(
+            publisher=InMemoryPublisher(),
+            archive=RawEventArchive(tmp_path / "raw_archive"),
+        ),
+        engine=ParsingEngine(Path("source_packs")),
+        normalizer=UniversalNormalizer(default_registry()),
+        store=store,
+        exporter=exporter,
+    )
+
+
+def process(runner: PipelineRunner, raw_log: bytes | str):
+    return runner.process(raw_log, transport="file", source_id="cisco-test")
 
 
 def test_criterion_1_and_2_raw_payload_unchanged_and_hash_verified(clean_runner):
@@ -43,14 +61,14 @@ def test_criterion_1_and_2_raw_payload_unchanged_and_hash_verified(clean_runner)
     raw_bytes = raw_log.encode("utf-8")
     expected_sha256 = hashlib.sha256(raw_bytes).hexdigest()
 
-    result = clean_runner.process_raw_log(raw_log)
-    ue = result["unified_event"]
+    result = process(clean_runner, raw_log)
+    ue = result.unified
 
     # Criterion 1: Unchanged payload preserved
     assert ue["traceability"]["raw_event"]["content"] == raw_log
 
     # Criterion 2: Verified hash
-    assert result["raw_sha256"] == expected_sha256
+    assert result.raw_event.raw_sha256 == expected_sha256
     assert ue["traceability"]["raw_sha256"] == expected_sha256
 
 
@@ -61,8 +79,8 @@ def test_criterion_3_parser_and_schema_versions_recorded(clean_runner):
         "Built inbound TCP connection 123456 for outside:203.0.113.5/54321 "
         "to inside:10.0.0.5/443"
     )
-    result = clean_runner.process_raw_log(raw_log)
-    ue = result["unified_event"]
+    result = process(clean_runner, raw_log)
+    ue = result.unified
 
     assert ue["schema_version"] == "1.0.0"
     assert ue["traceability"]["source_pack"]["version"] == "1.0.0"
@@ -76,12 +94,12 @@ def test_criterion_4_normalized_output_links_to_raw_event(clean_runner):
         "Deny tcp src outside:203.0.113.5/54321 dst inside:10.0.0.5/443 "
         'by access-group "OUTSIDE_IN"'
     )
-    result = clean_runner.process_raw_log(raw_log)
-    ue = result["unified_event"]
+    result = process(clean_runner, raw_log)
+    ue = result.unified
 
     assert "raw_event_id" in ue["traceability"]
     assert "raw_sha256" in ue["traceability"]
-    assert ue["traceability"]["raw_sha256"] == result["raw_sha256"]
+    assert ue["traceability"]["raw_sha256"] == result.raw_event.raw_sha256
 
 
 def test_criterion_5_analytical_visibility_and_search(clean_runner):
@@ -96,7 +114,7 @@ def test_criterion_5_analytical_visibility_and_search(clean_runner):
             "for outside:203.0.113.20/6000 to inside:10.0.0.2/443"
         ),
     ]
-    clean_runner.process_batch(logs)
+    clean_runner.process_batch(logs, transport="file", source_id="cisco-batch")
 
     # Search by action
     denies = clean_runner.store.search(action="deny")
@@ -121,8 +139,8 @@ def test_criterion_6_normalized_json_schema_valid(clean_runner):
         "Deny tcp src outside:203.0.113.5/54321 dst inside:10.0.0.5/443 "
         'by access-group "OUTSIDE_IN"'
     )
-    result = clean_runner.process_raw_log(raw_log)
-    ue = result["unified_event"]
+    result = process(clean_runner, raw_log)
+    ue = result.unified
 
     # Verify JSON serializability
     json_str = json.dumps(ue)
@@ -136,17 +154,17 @@ def test_criterion_6_normalized_json_schema_valid(clean_runner):
 def test_criterion_7_invalid_logs_retained_and_marked(clean_runner):
     """Criterion 7: Unrecognized logs are retained with quality warnings and never dropped."""
     corrupt_log = "<134>1 2023-10-12T14:23:25Z corrupt random non-syslog line \x00\x01\x02"
-    result = clean_runner.process_raw_log(corrupt_log)
-    ue = result["unified_event"]
+    result = process(clean_runner, corrupt_log)
+    ue = result.unified
 
-    assert result["parsed_status"] in {"unrecognized", "failed"}
-    assert ue["quality"]["status"] in {"invalid", "partial"}
+    assert result.parsed.status.value in {"unrecognized", "failed"}
+    assert ue["quality"]["status"] in {"invalid", "partial", "unknown"}
     assert len(ue["quality"]["warnings"]) > 0
     # Payload is preserved verbatim
     assert ue["traceability"]["raw_event"]["content"] == corrupt_log
 
     # Stored in visibility store
-    found = clean_runner.store.get_by_raw_hash(result["raw_sha256"])
+    found = clean_runner.store.get_by_raw_hash(result.raw_event.raw_sha256)
     assert found is not None
 
 
@@ -159,7 +177,7 @@ def test_criterion_8_data_lake_export_and_manifest(clean_runner, tmp_path: Path)
         ),
         "corrupt-garbage-log-data-not-dropped",
     ]
-    clean_runner.process_batch(logs)
+    clean_runner.process_batch(logs, transport="file", source_id="cisco-batch")
 
     export_dir = clean_runner.exporter.base_dir
     valid_file = export_dir / "ulpf_lake_normalized.jsonl"

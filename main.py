@@ -1,49 +1,90 @@
-"""
-main.py
-
-FastAPI service for Universal Log Pre-processing Framework (ULPF Prism).
-Provides parsing APIs, end-to-end Cisco ASA normalization pipeline,
-interactive analytical visibility dashboard, and data-lake exporter.
-
-Run locally:   uvicorn main:app --reload
-Run in Docker: see Dockerfile (CMD runs uvicorn on 0.0.0.0:8080)
-"""
+"""FastAPI service for the vendor-agnostic ULPF Prism pipeline."""
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
+import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal
 
 from fastapi import Body, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, model_validator
 
 from core.engine import ParsingEngine
-from core.models import ParsedEvent, RawEventEnvelope
+from src.collection.archive import RawEventArchive
+from src.collection.pipeline import CollectionPipeline
+from src.collection.publisher import FileStreamPublisher
+from src.contracts import ParsedEvent, RawEventEnvelope
+from src.normalization import UniversalNormalizer, default_registry
 from src.pipeline.dashboard_html import DASHBOARD_HTML
-from src.pipeline.demo import SAMPLE_LOGS
 from src.pipeline.exporter import DataLakeExporter
-from src.pipeline.runner import CiscoASAPipelineRunner
+from src.pipeline.runner import CollectionRejectedError, PipelineRunner
 from src.pipeline.storage import global_visibility_store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("ulpf.main")
 
-PACKS_DIR = Path(__file__).parent / "source_packs"
+PROJECT_ROOT = Path(__file__).parent
+PACKS_DIR = PROJECT_ROOT / "source_packs"
+DATA_DIR = Path(os.environ.get("ULPF_DATA_DIR", PROJECT_ROOT / "data"))
+
+
+class EventIngestRequest(BaseModel):
+    """One API event encoded as text or exact Base64 bytes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    raw_text: str | None = None
+    raw_base64: str | None = None
+    source_id: str = Field(min_length=1, max_length=256)
+    source_ip: IPvAnyAddress | None = None
+    transport: Literal["udp", "tcp", "file", "api", "replay"] = "api"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def require_one_payload(self):
+        if (self.raw_text is None) == (self.raw_base64 is None):
+            raise ValueError("provide exactly one of raw_text or raw_base64")
+        return self
+
+    def payload_bytes(self) -> bytes:
+        if self.raw_text is not None:
+            return self.raw_text.encode("utf-8")
+        try:
+            return base64.b64decode(self.raw_base64 or "", validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise ValueError("raw_base64 must be valid Base64") from error
+
+
+def build_default_runner(data_dir: Path = DATA_DIR) -> PipelineRunner:
+    """Compose production-facing services without inserting sample events."""
+
+    archive = RawEventArchive(data_dir / "raw-archive")
+    publisher = FileStreamPublisher(data_dir / "streams" / "raw-event.jsonl")
+    return PipelineRunner(
+        collector=CollectionPipeline(publisher=publisher, archive=archive),
+        engine=ParsingEngine(PACKS_DIR),
+        normalizer=UniversalNormalizer(default_registry()),
+        store=global_visibility_store,
+        exporter=DataLakeExporter(data_dir / "exports"),
+    )
+
+
+pipeline_runner = build_default_runner()
+engine = pipeline_runner.engine
+exporter = pipeline_runner.exporter
 
 app = FastAPI(
     title="Universal Log Pre-processing Framework (ULPF Prism)",
-    description="Unified log parsing, schema normalization, analytical visibility, and data-lake export service.",
+    description=(
+        "Lossless multi-vendor collection, parsing, normalization, visibility, "
+        "and data-lake export service."
+    ),
     version="1.0.0",
 )
-
-engine = ParsingEngine(packs_dir=PACKS_DIR)
-cisco_runner = CiscoASAPipelineRunner(store=global_visibility_store)
-exporter = DataLakeExporter()
-
-# Pre-populate sample events so visibility dashboard is immediately populated
-for sample in SAMPLE_LOGS:
-    cisco_runner.process_raw_log(sample)
 
 
 @app.get("/healthz")
@@ -51,13 +92,14 @@ def healthz():
     return {
         "status": "ok",
         "loaded_packs": len(engine.registry.packs),
-        "indexed_events": len(global_visibility_store._events),
+        "indexed_events": global_visibility_store.event_count,
     }
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def view_dashboard():
-    """Renders the Unified Analytical Visibility Dashboard."""
+    """Render the unified analytical visibility dashboard."""
+
     return HTMLResponse(content=DASHBOARD_HTML)
 
 
@@ -65,14 +107,14 @@ def view_dashboard():
 def list_packs():
     return [
         {
-            "pack_id": p.pack_id,
-            "vendor": p.vendor,
-            "product": p.product,
-            "pack_version": p.pack_version,
-            "priority": p.priority,
-            "format": p.format_type,
+            "pack_id": pack.pack_id,
+            "vendor": pack.vendor,
+            "product": pack.product,
+            "pack_version": pack.pack_version,
+            "priority": pack.priority,
+            "format": pack.format_type,
         }
-        for p in engine.registry.packs
+        for pack in engine.registry.packs
     ]
 
 
@@ -84,39 +126,51 @@ def reload_packs():
 
 @app.post("/v1/parse", response_model=ParsedEvent)
 def parse_event(envelope: RawEventEnvelope):
+    return engine.process(envelope)
+
+
+@app.post("/v1/events", status_code=201)
+def process_event(request: EventIngestRequest):
+    """Execute the complete vendor-agnostic pipeline for one event."""
+
     try:
-        return engine.process(envelope)
-    except Exception as exc:
-        logger.exception("Unhandled error processing event %s", envelope.event_id)
-        raise HTTPException(status_code=500, detail=f"Unhandled engine error: {exc}") from exc
+        payload = request.payload_bytes()
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    try:
+        result = pipeline_runner.process(
+            payload,
+            transport=request.transport,
+            source_id=request.source_id,
+            source_ip=str(request.source_ip) if request.source_ip is not None else None,
+            metadata=request.metadata,
+        )
+    except CollectionRejectedError as error:
+        status_code = 413 if error.result.reason == "oversized_event" else 422
+        raise HTTPException(status_code=status_code, detail=error.result.reason) from error
+    return result.response()
 
 
-@app.post("/v1/pipeline/cisco-asa")
+@app.post("/v1/pipeline/cisco-asa", deprecated=True)
 def process_cisco_asa_pipeline(
-    raw_payload: str = Body(..., media_type="text/plain", description="Raw Cisco ASA Syslog line")
+    raw_payload: str = Body(..., media_type="text/plain", description="Raw Cisco ASA Syslog line"),
 ):
-    """
-    Complete end-to-end pipeline execution for a single Cisco ASA log:
-    Raw Bytes -> RawEventEnvelope + Hash -> Cisco Source Pack -> UnifiedEvent Normalization -> Analytical Indexing.
-    """
-    try:
-        result = cisco_runner.process_raw_log(raw_payload)
-        return JSONResponse(content=result)
-    except Exception as exc:
-        logger.exception("Failed to process Cisco ASA pipeline")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    """Compatibility endpoint routed through the universal pipeline."""
+
+    request = EventIngestRequest(raw_text=raw_payload, source_id="legacy-cisco-api")
+    return process_event(request)
 
 
 @app.get("/v1/analytics/events")
 def get_analytics_events(
-    query: Optional[str] = Query(None, description="Free text or field query"),
-    vendor: Optional[str] = Query(None, description="Vendor filter"),
-    action: Optional[str] = Query(None, description="Action filter"),
-    severity: Optional[str] = Query(None, description="Severity filter"),
-    quality_status: Optional[str] = Query(None, description="Quality status filter"),
+    query: str | None = Query(None, description="Free text or field query"),
+    vendor: str | None = Query(None, description="Vendor filter"),
+    action: str | None = Query(None, description="Action filter"),
+    severity: str | None = Query(None, description="Severity filter"),
+    quality_status: str | None = Query(None, description="Quality status filter"),
     limit: int = Query(50, ge=1, le=500),
 ):
-    """Returns indexed normalized events and live analytical aggregations."""
     events = global_visibility_store.search(
         query=query,
         vendor=vendor,
@@ -125,16 +179,13 @@ def get_analytics_events(
         quality_status=quality_status,
         limit=limit,
     )
-    aggregations = global_visibility_store.get_aggregations()
-    return {"events": events, "aggregations": aggregations}
+    return {"events": events, "aggregations": global_visibility_store.get_aggregations()}
 
 
 @app.post("/v1/export/data-lake")
 def export_data_lake():
-    """Triggers data lake export to JSON-Lines."""
     events = global_visibility_store.list_events(limit=1000)
-    manifest = exporter.export_events(events)
-    return manifest
+    return exporter.export_events(events)
 
 
 if __name__ == "__main__":

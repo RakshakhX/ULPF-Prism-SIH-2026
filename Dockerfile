@@ -13,8 +13,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the engine, source packs, and tests
+# Copy the engine, canonical services, schemas, source packs, and tests
 COPY core/ ./core/
+COPY src/ ./src/
+COPY schemas/ ./schemas/
 COPY source_packs/ ./source_packs/
 COPY tests/ ./tests/
 COPY main.py .

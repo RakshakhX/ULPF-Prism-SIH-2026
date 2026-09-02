@@ -136,3 +136,18 @@ def test_cli_propagates_unexpected_validator_value_error(monkeypatch, capsys) ->
     output = capsys.readouterr()
     assert output.out == ""
     assert output.err == ""
+
+
+def test_explicit_demo_command_runs_multi_vendor_pipeline(tmp_path: Path, capsys) -> None:
+    from src.pipeline.demo import run_demonstration
+
+    results = run_demonstration(tmp_path / "demo")
+    output = capsys.readouterr().out
+
+    assert len(results) == 4
+    assert {result.parsed.source_pack_id for result in results} >= {
+        "cisco_asa",
+        "fortinet_fortigate",
+        "generic_linux_syslog",
+    }
+    assert "CANONICAL MULTI-VENDOR PIPELINE DEMO" in output

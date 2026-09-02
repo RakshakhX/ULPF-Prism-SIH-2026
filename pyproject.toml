@@ -8,15 +8,17 @@ version = "0.1.0"
 description = "Universal Log Pre-processing Framework prototype"
 requires-python = ">=3.11"
 dependencies = [
+  "fastapi>=0.110,<0.116",
   "jsonschema[format]==4.26.0",
   "pydantic>=2.6,<3.0",
   "PyYAML>=6.0,<7.0",
   "confluent-kafka==2.5.3",
   "psutil>=5.9,<7.0",
+  "uvicorn[standard]>=0.29,<0.31",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "ruff==0.16.4"]
+dev = ["httpx>=0.27,<1.0", "pytest==9.1.1", "ruff==0.16.4"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"

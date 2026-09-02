@@ -29,6 +29,10 @@ class AnalyticalVisibilityStore:
         if raw_hash:
             self._by_raw_hash[raw_hash] = event
 
+    @property
+    def event_count(self) -> int:
+        return len(self._events)
+
     def get_by_id(self, event_id: str) -> dict[str, Any] | None:
         """Lookup by event ID."""
         return self._by_id.get(event_id)
