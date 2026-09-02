@@ -14,6 +14,8 @@ from typing import Any
 from core.cisco_asa_pack import ParsedEvent as CiscoParsedEvent
 from core.models import ParsedEvent as CoreParsedEvent
 from core.models import ParseStatus
+from src.contracts import ParsedEvent as CanonicalParsedEvent
+from src.normalization import UniversalNormalizer, default_registry
 
 # Syslog severity (0-7) to UnifiedEvent normalized (0-10) and label mapping
 SYSLOG_SEVERITY_MAP: dict[int, tuple[int, str]] = {
@@ -49,11 +51,14 @@ def _is_valid_ipv4(ip: str) -> bool:
 
 
 def normalize_cisco_asa_event(
-    parsed: CiscoParsedEvent | CoreParsedEvent | dict[str, Any],
+    parsed: CiscoParsedEvent | CoreParsedEvent | CanonicalParsedEvent | dict[str, Any],
 ) -> dict[str, Any]:
     """
     Normalizes a Cisco ASA ParsedEvent or Raw payload into a fully validated UnifiedEvent (v1.0.0).
     """
+    if isinstance(parsed, CanonicalParsedEvent):
+        return UniversalNormalizer(default_registry()).normalize(parsed)
+
     # Extract raw event info
     if isinstance(parsed, CiscoParsedEvent):
         raw_sha256 = parsed.raw_event.sha256
