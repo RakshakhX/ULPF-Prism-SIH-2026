@@ -3,6 +3,8 @@
 # Pack: generic_linux_syslog
 # =============================================================================
 
+implementation: "source_packs.generic_linux_syslog.pack:GenericLinuxSyslogPack"
+
 pack:
   vendor: "Generic"
   product: "Linux Syslog (rsyslog/syslog-ng)"

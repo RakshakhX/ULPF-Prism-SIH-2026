@@ -12,12 +12,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.engine import ParsingEngine  # noqa: E402
-from core.models import ParsingStatus, RawEventEnvelope  # noqa: E402
 from core.parsers.cef_parser import CEFFormatParser  # noqa: E402
 from core.parsers.csv_parser import CSVFormatParser  # noqa: E402
 from core.parsers.json_parser import JSONFormatParser  # noqa: E402
 from core.parsers.kv_parser import KeyValueParser  # noqa: E402
 from core.parsers.regex_parser import RegexFormatParser  # noqa: E402
+from src.contracts import ParseStatus, RawEventEnvelope  # noqa: E402
 
 PACKS_DIR = PROJECT_ROOT / "source_packs"
 
@@ -29,35 +29,45 @@ def _engine() -> ParsingEngine:
 def test_engine_loads_packs():
     engine = _engine()
     pack_ids = [p.pack_id for p in engine.registry.packs]
+    assert "cisco_asa" in pack_ids
     assert "generic_linux_syslog" in pack_ids
 
 
 def test_engine_routes_syslog_to_generic_pack():
     engine = _engine()
-    envelope = RawEventEnvelope(
-        raw_payload="<34>Oct 11 22:14:15 mymachine sshd[1234]: Failed password for invalid user admin"  # noqa: E501
+    envelope = RawEventEnvelope.from_bytes(
+        b"<34>Oct 11 22:14:15 mymachine sshd[1234]: Failed password for invalid user admin",
+        source_id="linux-1",
+        transport="udp",
     )
     result = engine.process(envelope)
-    assert result.status == ParsingStatus.SUCCESS
+    assert result.status is ParseStatus.SUCCESS
     assert result.source_pack_id == "generic_linux_syslog"
-    assert result.fields["hostname"] == "mymachine"
+    assert result.extracted_fields["hostname"] == "mymachine"
 
 
 def test_engine_falls_back_on_unrecognized_payload():
     engine = _engine()
-    envelope = RawEventEnvelope(raw_payload="this is just a plain unstructured line of text")
+    envelope = RawEventEnvelope.from_bytes(
+        b"this is just a plain unstructured line of text\xff",
+        source_id="unknown-1",
+        transport="file",
+    )
     result = engine.process(envelope)
-    assert result.status == ParsingStatus.UNPARSED_FALLBACK
-    assert result.fields["message"] == "this is just a plain unstructured line of text"
-    # Fallback must never lose the original envelope
-    assert result.raw_event.raw_payload == envelope.raw_payload
+    assert result.status is ParseStatus.UNRECOGNIZED
+    assert result.raw_event.raw_bytes() == envelope.raw_bytes()
+    assert result.raw_event.raw_sha256 == envelope.raw_sha256
 
 
 def test_engine_never_raises_on_garbage_input():
     engine = _engine()
-    garbage_payloads = ["", "{{{{not json", "<not-a-valid-pri>garbled", "\x00\x01binary\x02"]
+    garbage_payloads = [b"", b"{{{{not json", b"<not-a-valid-pri>garbled", b"\x00\xffbinary\x02"]
     for payload in garbage_payloads:
-        envelope = RawEventEnvelope(raw_payload=payload)
+        envelope = RawEventEnvelope.from_bytes(
+            payload,
+            source_id="garbage",
+            transport="file",
+        )
         result = engine.process(envelope)  # must not raise
         assert result is not None
         assert result.event_id == envelope.event_id

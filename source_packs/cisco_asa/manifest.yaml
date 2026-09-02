@@ -1,0 +1,14 @@
+implementation: "source_packs.cisco_asa.pack:CiscoASASourcePack"
+pack:
+  vendor: "Cisco"
+  product: "ASA"
+  pack_version: "1.0.0"
+detection:
+  priority: 100
+  rules:
+    - type: regex
+      target: raw_payload
+      pattern: '%ASA-\d-\d{6}:'
+format:
+  type: syslog
+fields: []

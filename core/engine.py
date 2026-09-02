@@ -20,12 +20,16 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from core.exceptions import ULPFError
-from core.models import LogFormat, ParsedEvent, ParsingStatus, RawEventEnvelope
-from core.parsers.fallback import FallbackParser
 from core.registry import SourcePackRegistry
+from src.contracts import (
+    ParsedEvent,
+    ParseIssue,
+    ParseIssueSeverity,
+    ParseStatus,
+    RawEventEnvelope,
+)
 
 logger = logging.getLogger("ulpf.engine")
 
@@ -33,7 +37,6 @@ logger = logging.getLogger("ulpf.engine")
 class ParsingEngine:
     def __init__(self, packs_dir: Path | str = "source_packs"):
         self.registry = SourcePackRegistry(Path(packs_dir))
-        self._fallback_parser = FallbackParser()
 
     def reload_packs(self) -> None:
         self.registry.reload()
@@ -52,33 +55,51 @@ class ParsingEngine:
             logger.error("Source detection failed for event %s: %s", envelope.event_id, exc)
 
         if pack is None:
-            logger.debug("No Source Pack matched event %s — using fallback parser", envelope.event_id)
-            return self._fallback_event(envelope, reason="no_matching_source_pack")
+            logger.debug(
+                "No Source Pack matched event %s — using fallback parser",
+                envelope.event_id,
+            )
+            return ParsedEvent.unrecognized(envelope, "no matching source pack")
 
         try:
             return pack.parse(envelope)
         except ULPFError as exc:
             logger.warning(
-                "Source Pack '%s' failed to parse event %s: %s", pack.pack_id, envelope.event_id, exc
+                "Source Pack '%s' failed to parse event %s: %s",
+                pack.pack_id,
+                envelope.event_id,
+                exc,
             )
-            return self._fallback_event(envelope, reason=str(exc), pack_id=pack.pack_id)
+            return self._failed_event(envelope, str(exc), pack.pack_id)
         except Exception as exc:  # truly unexpected — still never crash the engine
             logger.exception(
                 "Unexpected error in Source Pack '%s' for event %s", pack.pack_id, envelope.event_id
             )
-            return self._fallback_event(envelope, reason=f"unexpected_error: {exc}", pack_id=pack.pack_id)
+            return self._failed_event(envelope, f"unexpected_error: {exc}", pack.pack_id)
 
-    def _fallback_event(
-        self, envelope: RawEventEnvelope, reason: str, pack_id: Optional[str] = None
+    def _failed_event(
+        self, envelope: RawEventEnvelope, reason: str, pack_id: str
     ) -> ParsedEvent:
-        parsed_dict = self._fallback_parser.parse(envelope.raw_payload)
+        from datetime import UTC, datetime
+
         return ParsedEvent(
             event_id=envelope.event_id,
+            parsed_at=datetime.now(UTC),
+            vendor=None,
+            product=None,
+            product_version=None,
+            parser_id="ulpf.source-pack-registry",
+            parser_version="1.0.0",
             source_pack_id=pack_id,
-            format_detected=LogFormat.UNKNOWN,
-            message=parsed_dict.get("message"),
-            fields=parsed_dict,
-            status=ParsingStatus.UNPARSED_FALLBACK,
-            errors=[reason],
+            source_pack_version=None,
+            detected_format="unknown",
+            status=ParseStatus.FAILED,
+            issues=(
+                ParseIssue(
+                    code="SOURCE_PACK_FAILED",
+                    message=reason,
+                    severity=ParseIssueSeverity.ERROR,
+                ),
+            ),
             raw_event=envelope,
         )

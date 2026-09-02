@@ -26,8 +26,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.engine import ParsingEngine  # noqa: E402
-from core.models import ParsingStatus, RawEventEnvelope, Severity  # noqa: E402
 from source_packs.fortinet_fortigate.pack import FortinetFortigatePack  # noqa: E402
+from src.contracts import ParseStatus, RawEventEnvelope  # noqa: E402
 
 PACK_DIR = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = PACK_DIR / "samples"
@@ -37,16 +37,25 @@ EXPECTED_VALID_COUNT = 20
 EXPECTED_MALFORMED_COUNT = 5
 
 
+def make_envelope(raw_line: str) -> RawEventEnvelope:
+    return RawEventEnvelope.from_bytes(
+        raw_line.encode(),
+        source_id="fortigate-fixture",
+        transport="file",
+    )
+
+
 # --------------------------------------------------------------------------
 # Fixtures
 # --------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
 def raw_lines():
-    with open(SAMPLES_DIR / "raw_logs.txt", "r", encoding="utf-8") as fh:
+    with open(SAMPLES_DIR / "raw_logs.txt", encoding="utf-8") as fh:
         lines = [line.rstrip("\n") for line in fh if line.strip()]
     assert len(lines) == EXPECTED_VALID_COUNT + EXPECTED_MALFORMED_COUNT, (
-        f"Expected {EXPECTED_VALID_COUNT + EXPECTED_MALFORMED_COUNT} sample lines, found {len(lines)}"
+        f"Expected {EXPECTED_VALID_COUNT + EXPECTED_MALFORMED_COUNT} "
+        f"sample lines, found {len(lines)}"
     )
     return lines
 
@@ -63,7 +72,7 @@ def malformed_lines(raw_lines):
 
 @pytest.fixture(scope="module")
 def expected_outputs():
-    with open(SAMPLES_DIR / "expected_outputs.json", "r", encoding="utf-8") as fh:
+    with open(SAMPLES_DIR / "expected_outputs.json", encoding="utf-8") as fh:
         data = json.load(fh)
     assert len(data) == EXPECTED_VALID_COUNT
     return data
@@ -109,48 +118,44 @@ def test_valid_log_matches_expected_fields(index, valid_lines, expected_outputs,
     # Sanity check fixtures stay in sync (same line the expected output was derived from)
     assert expected["raw_log"] == raw_line
 
-    envelope = RawEventEnvelope(raw_payload=raw_line)
-    assert pack.detect(envelope) is True, f"Pack failed to detect valid FortiGate log at line {index + 1}"
+    envelope = make_envelope(raw_line)
+    assert pack.detect(envelope) is True, (
+        f"Pack failed to detect valid FortiGate log at line {index + 1}"
+    )
 
     parsed = pack.parse(envelope)
-    assert parsed.status == ParsingStatus.SUCCESS
+    assert parsed.status is ParseStatus.SUCCESS
     assert parsed.vendor == expected["vendor"]
     assert parsed.product == expected["product"]
-    assert parsed.fields == expected["fields"], (
-        f"Field mismatch on line {index + 1}:\n"
-        f"  got:      {parsed.fields}\n"
-        f"  expected: {expected['fields']}"
-    )
+    for field, value in expected["fields"].items():
+        assert parsed.extracted_fields[field] == value
 
 
 def test_valid_logs_get_normalized_timestamp_and_severity(valid_lines, pack):
-    envelope = RawEventEnvelope(raw_payload=valid_lines[0])  # traffic/forward, level=notice
+    envelope = make_envelope(valid_lines[0])  # traffic/forward, level=notice
     parsed = pack.parse(envelope)
-    assert parsed.event_timestamp is not None
-    assert parsed.event_timestamp.year == 2026
-    assert parsed.event_timestamp.month == 8
-    assert parsed.event_timestamp.day == 30
-    assert parsed.severity == Severity.MEDIUM  # "notice" maps to MEDIUM
-    assert parsed.host == "FGT-EDGE-01"
-    assert parsed.event_category == "traffic.forward"
+    assert parsed.extracted_fields["event_timestamp"].startswith("2026-08-30T14:20:00")
+    assert parsed.extracted_fields["severity_normalized"] == "medium"
+    assert parsed.extracted_fields["hostname"] == "FGT-EDGE-01"
+    assert parsed.extracted_fields["event_category_normalized"] == "traffic.forward"
 
 
 def test_critical_ips_log_maps_to_critical_severity(valid_lines, pack):
     # line 13 (index 12) is the "alert"-level blocked IPS event
-    envelope = RawEventEnvelope(raw_payload=valid_lines[12])
+    envelope = make_envelope(valid_lines[12])
     parsed = pack.parse(envelope)
-    assert parsed.severity == Severity.CRITICAL
-    assert parsed.fields["action"] == "blocked"
-    assert parsed.fields["attack_signature"] is not None
+    assert parsed.extracted_fields["severity_normalized"] == "critical"
+    assert parsed.extracted_fields["action"] == "blocked"
+    assert parsed.extracted_fields["attack_signature"] is not None
 
 
 def test_event_log_promotes_logdesc_as_message(valid_lines, pack):
     # line 16 (index 15) is the system reboot event log — no `msg`... actually
     # has msg, but log_description should still populate fields correctly.
-    envelope = RawEventEnvelope(raw_payload=valid_lines[15])
+    envelope = make_envelope(valid_lines[15])
     parsed = pack.parse(envelope)
-    assert parsed.fields["log_description"] == "System reboot"
-    assert parsed.event_category == "event.system"
+    assert parsed.extracted_fields["log_description"] == "System reboot"
+    assert parsed.extracted_fields["event_category_normalized"] == "event.system"
 
 
 # --------------------------------------------------------------------------
@@ -164,23 +169,22 @@ def test_malformed_count_matches_spec(malformed_lines):
 @pytest.mark.parametrize("index", range(EXPECTED_MALFORMED_COUNT))
 def test_malformed_log_falls_back_via_engine(index, malformed_lines, engine):
     raw_line = malformed_lines[index]
-    envelope = RawEventEnvelope(raw_payload=raw_line)
+    envelope = make_envelope(raw_line)
 
     # Must never raise.
     result = engine.process(envelope)
 
     assert result is not None
-    assert result.status == ParsingStatus.UNPARSED_FALLBACK, (
+    assert result.status is ParseStatus.UNRECOGNIZED, (
         f"Malformed line {index + 1} did not fall back as expected: status={result.status}"
     )
-    assert result.raw_event.raw_payload == raw_line
-    assert result.fields.get("message") == raw_line
-    assert result.errors, "Fallback event should record a reason in `errors`"
+    assert result.raw_event.raw_bytes() == raw_line.encode()
+    assert result.issues, "Unrecognized event should record a structured reason"
 
 
 @pytest.mark.parametrize("index", range(EXPECTED_MALFORMED_COUNT))
 def test_malformed_log_is_not_detected_by_fortigate_pack(index, malformed_lines, pack):
-    envelope = RawEventEnvelope(raw_payload=malformed_lines[index])
+    envelope = make_envelope(malformed_lines[index])
     assert pack.detect(envelope) is False, (
         f"FortiGate pack incorrectly claimed malformed line {index + 1}"
     )
@@ -188,7 +192,7 @@ def test_malformed_log_is_not_detected_by_fortigate_pack(index, malformed_lines,
 
 def test_engine_never_raises_across_all_25_lines(raw_lines, engine):
     for i, raw_line in enumerate(raw_lines, start=1):
-        envelope = RawEventEnvelope(raw_payload=raw_line)
+        envelope = make_envelope(raw_line)
         try:
             result = engine.process(envelope)
         except Exception as exc:  # pragma: no cover - the whole point of this test

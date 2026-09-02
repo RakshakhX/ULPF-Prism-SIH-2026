@@ -27,22 +27,22 @@ values extracted per the manifest's field-mapping rules.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from core.models import ParsedEvent, RawEventEnvelope, Severity
 from core.source_pack import SourcePackBase
+from src.contracts import ParsedEvent, RawEventEnvelope
 
 # FortiOS syslog-style severity names -> normalized ULPF Severity
 _LEVEL_TO_SEVERITY = {
-    "emergency": Severity.CRITICAL,
-    "alert": Severity.CRITICAL,
-    "critical": Severity.CRITICAL,
-    "error": Severity.HIGH,
-    "warning": Severity.MEDIUM,
-    "notice": Severity.MEDIUM,
-    "information": Severity.INFO,
-    "debug": Severity.INFO,
+    "emergency": "critical",
+    "alert": "critical",
+    "critical": "critical",
+    "error": "high",
+    "warning": "medium",
+    "notice": "medium",
+    "information": "info",
+    "debug": "info",
 }
 
 
@@ -60,21 +60,18 @@ class FortinetFortigatePack(SourcePackBase):
         # same payload) purely to reach `date`/`time`, which aren't part
         # of the declarative fields list (only their combination matters).
         from core.parsers import get_parser
-        raw_kv = get_parser(self.format_type).parse(envelope.raw_payload, **self.format_options)
+        raw_text = envelope.raw_bytes().decode("utf-8", errors="replace")
+        raw_kv = get_parser(self.format_type).parse(raw_text, **self.format_options)
 
-        parsed_event.event_timestamp = self._combine_timestamp(raw_kv.get("date"), raw_kv.get("time"))
-        parsed_event.severity = self._map_severity(parsed_event.fields.get("level"))
-        parsed_event.host = parsed_event.fields.get("hostname")
-        parsed_event.event_category = self._build_category(
-            parsed_event.fields.get("event_type"), parsed_event.fields.get("event_subtype")
+        fields = dict(parsed_event.extracted_fields)
+        timestamp = self._combine_timestamp(raw_kv.get("date"), raw_kv.get("time"))
+        if timestamp is not None:
+            fields["event_timestamp"] = timestamp.isoformat()
+        fields["severity_normalized"] = self._map_severity(fields.get("level"))
+        fields["event_category_normalized"] = self._build_category(
+            fields.get("event_type"), fields.get("event_subtype")
         )
-        parsed_event.message = (
-            parsed_event.fields.get("message")
-            or parsed_event.fields.get("log_description")
-            or parsed_event.fields.get("attack_signature")
-        )
-
-        return parsed_event
+        return parsed_event.model_copy(update={"extracted_fields": fields})
 
     # -- helpers --------------------------------------------------------------
 
@@ -84,16 +81,16 @@ class FortinetFortigatePack(SourcePackBase):
             return None
         try:
             return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S").replace(
-                tzinfo=timezone.utc
+                tzinfo=UTC
             )
         except ValueError:
             return None
 
     @staticmethod
-    def _map_severity(level: str) -> Severity:
+    def _map_severity(level: str) -> str:
         if not level:
-            return Severity.UNKNOWN
-        return _LEVEL_TO_SEVERITY.get(level.strip().lower(), Severity.UNKNOWN)
+            return "unknown"
+        return _LEVEL_TO_SEVERITY.get(level.strip().lower(), "unknown")
 
     @staticmethod
     def _build_category(event_type, event_subtype):

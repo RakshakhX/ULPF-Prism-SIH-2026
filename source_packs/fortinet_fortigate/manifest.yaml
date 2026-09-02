@@ -3,6 +3,8 @@
 # Pack: fortinet_fortigate
 # =============================================================================
 
+implementation: "source_packs.fortinet_fortigate.pack:FortinetFortigatePack"
+
 pack:
   vendor: "Fortinet"
   product: "FortiGate"

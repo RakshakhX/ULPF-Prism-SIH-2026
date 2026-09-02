@@ -14,41 +14,45 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.models import ParsingStatus, RawEventEnvelope  # noqa: E402
 from source_packs.generic_linux_syslog.pack import GenericLinuxSyslogPack  # noqa: E402
+from src.contracts import ParseStatus, RawEventEnvelope  # noqa: E402
 
 PACK_DIR = Path(__file__).resolve().parents[1]
 
 
 def _load_sample_line() -> str:
-    with open(PACK_DIR / "samples" / "sample.log", "r", encoding="utf-8") as fh:
+    with open(PACK_DIR / "samples" / "sample.log", encoding="utf-8") as fh:
         return fh.readline().strip()
+
+
+def _envelope(text: str) -> RawEventEnvelope:
+    return RawEventEnvelope.from_bytes(text.encode(), source_id="linux-fixture", transport="file")
 
 
 def test_detection_matches_sample_line():
     pack = GenericLinuxSyslogPack()
-    envelope = RawEventEnvelope(raw_payload=_load_sample_line())
+    envelope = _envelope(_load_sample_line())
     assert pack.detect(envelope) is True
 
 
 def test_parse_matches_expected_output():
     pack = GenericLinuxSyslogPack()
-    envelope = RawEventEnvelope(raw_payload=_load_sample_line())
+    envelope = _envelope(_load_sample_line())
     parsed = pack.parse(envelope)
 
-    assert parsed.status == ParsingStatus.SUCCESS
+    assert parsed.status is ParseStatus.SUCCESS
     assert parsed.vendor == "Generic"
-    assert parsed.fields["hostname"] == "mymachine"
-    assert parsed.fields["process"] == "sshd"
-    assert parsed.fields["pid"] == "1234"
-    assert parsed.fields["syslog_facility"] == 4
-    assert parsed.fields["syslog_facility_name"] == "auth"
-    assert "Failed password" in parsed.fields["message"]
+    assert parsed.extracted_fields["hostname"] == "mymachine"
+    assert parsed.extracted_fields["process"] == "sshd"
+    assert parsed.extracted_fields["pid"] == "1234"
+    assert parsed.extracted_fields["syslog_facility"] == 4
+    assert parsed.extracted_fields["syslog_facility_name"] == "auth"
+    assert "Failed password" in parsed.extracted_fields["message"]
 
 
 def test_detection_rejects_unrelated_payload():
     pack = GenericLinuxSyslogPack()
-    envelope = RawEventEnvelope(raw_payload='{"totally": "not syslog"}')
+    envelope = _envelope('{"totally": "not syslog"}')
     assert pack.detect(envelope) is False
 
 

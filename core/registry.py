@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 from core.exceptions import SourcePackLoadError, SourcePackValidationError
-from core.models import RawEventEnvelope
-from core.source_pack import SourcePackBase
+from src.contracts import RawEventEnvelope
+from src.source_packs.loader import SourcePackProtocol, load_source_pack
 
 logger = logging.getLogger("ulpf.registry")
 
@@ -25,12 +24,12 @@ logger = logging.getLogger("ulpf.registry")
 class SourcePackRegistry:
     def __init__(self, packs_dir: Path):
         self.packs_dir = Path(packs_dir)
-        self._packs: List[SourcePackBase] = []
+        self._packs: list[SourcePackProtocol] = []
         self.reload()
 
     def reload(self) -> None:
         """(Re)scan packs_dir and load every valid Source Pack found."""
-        loaded: List[SourcePackBase] = []
+        loaded: list[SourcePackProtocol] = []
 
         if not self.packs_dir.exists():
             logger.warning("Source pack directory does not exist: %s", self.packs_dir)
@@ -42,13 +41,14 @@ class SourcePackRegistry:
             if not entry.is_dir() or not manifest_path.exists():
                 continue
             try:
-                pack = SourcePackBase(manifest_path)
+                pack = load_source_pack(manifest_path)
                 loaded.append(pack)
                 logger.info(
-                    "Loaded Source Pack '%s' (%s / %s, v%s)",
-                    pack.pack_id, pack.vendor, pack.product, pack.pack_version,
+                    "Loaded Source Pack '%s' using %s",
+                    pack.pack_id,
+                    type(pack).__name__,
                 )
-            except (SourcePackValidationError, SourcePackLoadError, Exception) as exc:
+            except (SourcePackValidationError, SourcePackLoadError) as exc:
                 # A single broken pack must never take down the engine or
                 # prevent other packs from loading.
                 logger.error("Failed to load Source Pack at %s: %s", manifest_path, exc)
@@ -59,16 +59,16 @@ class SourcePackRegistry:
         self._packs = loaded
 
     @property
-    def packs(self) -> List[SourcePackBase]:
+    def packs(self) -> list[SourcePackProtocol]:
         return list(self._packs)
 
-    def get_pack(self, pack_id: str) -> Optional[SourcePackBase]:
+    def get_pack(self, pack_id: str) -> SourcePackProtocol | None:
         for pack in self._packs:
             if pack.pack_id == pack_id:
                 return pack
         return None
 
-    def match(self, envelope: RawEventEnvelope) -> Optional[SourcePackBase]:
+    def match(self, envelope: RawEventEnvelope) -> SourcePackProtocol | None:
         """Return the highest-priority pack whose detection rules match, or None."""
         for pack in self._packs:
             try:

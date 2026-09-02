@@ -13,13 +13,29 @@ import base64
 import hashlib
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.models import ParseErrorSeverity, ParseStatus
+from src.contracts import (
+    ParsedEvent as CanonicalParsedEvent,
+)
+from src.contracts import (
+    ParseIssue as CanonicalParseIssue,
+)
+from src.contracts import (
+    ParseIssueSeverity as CanonicalIssueSeverity,
+)
+from src.contracts import (
+    ParseStatus as CanonicalParseStatus,
+)
+from src.contracts import (
+    RawEventEnvelope as CanonicalRawEventEnvelope,
+)
 
 PACK_ID = "cisco_asa"
 PACK_VERSION = "1.0.0"
@@ -84,7 +100,10 @@ def _parse_106023(message: str) -> dict[str, Any]:
 def _parse_302013_302014(message: str) -> dict[str, Any]:
     match = _TEARDOWN_302013_302014_RE.match(message)
     if not match:
-        raise ValueError("message body does not match the expected 302013/302014 (connection built/teardown) layout")
+        raise ValueError(
+            "message body does not match the expected 302013/302014 "
+            "(connection built/teardown) layout"
+        )
     fields = match.groupdict()
     fields["event_type"] = "connection_lifecycle"
     return fields
@@ -132,8 +151,8 @@ class ParseError(BaseModel):
     code: str
     message: str
     severity: ParseErrorSeverity = ParseErrorSeverity.ERROR
-    field: Optional[str] = None
-    detail: Optional[str] = None
+    field: str | None = None
+    detail: str | None = None
 
 
 class RawEvent(BaseModel):
@@ -142,15 +161,15 @@ class RawEvent(BaseModel):
     payload_b64: str
     byte_length: int
     sha256: str
-    encoding_hint: Optional[str] = None
-    source_topic: Optional[str] = None
-    source_partition: Optional[int] = None
-    source_offset: Optional[int] = None
-    source_key: Optional[str] = None
-    received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    encoding_hint: str | None = None
+    source_topic: str | None = None
+    source_partition: int | None = None
+    source_offset: int | None = None
+    source_key: str | None = None
+    received_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
-    def from_bytes(cls, raw: bytes, **kwargs: Any) -> "RawEvent":
+    def from_bytes(cls, raw: bytes, **kwargs: Any) -> RawEvent:
         return cls(
             payload_b64=base64.b64encode(raw).decode("ascii"),
             byte_length=len(raw),
@@ -166,15 +185,15 @@ class ParsedEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     event_id: str
-    vendor: Optional[str] = None
-    product: Optional[str] = None
-    source_pack_id: Optional[str] = None
-    source_pack_version: Optional[str] = None
+    vendor: str | None = None
+    product: str | None = None
+    source_pack_id: str | None = None
+    source_pack_version: str | None = None
     parse_status: ParseStatus
     parse_errors: list[ParseError] = Field(default_factory=list)
     extracted_fields: dict[str, Any] = Field(default_factory=dict)
     raw_event: RawEvent
-    parsed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    parsed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def has_errors(self) -> bool:
@@ -186,8 +205,8 @@ class ParsedEvent(BaseModel):
         message: str,
         *,
         severity: ParseErrorSeverity = ParseErrorSeverity.ERROR,
-        field: Optional[str] = None,
-        detail: Optional[str] = None,
+        field: str | None = None,
+        detail: str | None = None,
     ) -> None:
         self.parse_errors.append(
             ParseError(code=code, message=message, severity=severity, field=field, detail=detail)
@@ -196,12 +215,24 @@ class ParsedEvent(BaseModel):
             self.parse_status = ParseStatus.PARTIAL
 
     @classmethod
-    def unrecognized(cls, raw: bytes, *, reason: str = "no Source Pack matched this payload", **raw_kwargs: Any) -> "ParsedEvent":
+    def unrecognized(
+        cls,
+        raw: bytes,
+        *,
+        reason: str = "no Source Pack matched this payload",
+        **raw_kwargs: Any,
+    ) -> ParsedEvent:
         raw_event = RawEvent.from_bytes(raw, **raw_kwargs)
         return cls(
             event_id=raw_event.sha256,
             parse_status=ParseStatus.UNRECOGNIZED,
-            parse_errors=[ParseError(code="NO_SOURCE_PACK_MATCH", message=reason, severity=ParseErrorSeverity.WARNING)],
+            parse_errors=[
+                ParseError(
+                    code="NO_SOURCE_PACK_MATCH",
+                    message=reason,
+                    severity=ParseErrorSeverity.WARNING,
+                )
+            ],
             raw_event=raw_event,
         )
 
@@ -210,14 +241,14 @@ class ParsedEvent(BaseModel):
         cls,
         raw: bytes,
         *,
-        vendor: Optional[str],
-        product: Optional[str],
-        source_pack_id: Optional[str],
-        source_pack_version: Optional[str],
+        vendor: str | None,
+        product: str | None,
+        source_pack_id: str | None,
+        source_pack_version: str | None,
         error: ParseError,
-        extracted_fields: Optional[dict[str, Any]] = None,
+        extracted_fields: dict[str, Any] | None = None,
         **raw_kwargs: Any,
-    ) -> "ParsedEvent":
+    ) -> ParsedEvent:
         raw_event = RawEvent.from_bytes(raw, **raw_kwargs)
         return cls(
             event_id=raw_event.sha256,
@@ -242,7 +273,7 @@ class ParsedEvent(BaseModel):
         source_pack_version: str,
         extracted_fields: dict[str, Any],
         **raw_kwargs: Any,
-    ) -> "ParsedEvent":
+    ) -> ParsedEvent:
         raw_event = RawEvent.from_bytes(raw, **raw_kwargs)
         return cls(
             event_id=raw_event.sha256,
@@ -280,7 +311,7 @@ class SourcePackRegistry:
         self._packs[pack_id] = pack
 
     def route(self, raw: bytes, **context) -> ParsedEvent:
-        best_pack: Optional[SourcePack] = None
+        best_pack: SourcePack | None = None
         best_confidence = 0.0
         detection_notes: list[str] = []
 
@@ -292,7 +323,10 @@ class SourcePackRegistry:
                 continue
 
             if result.matched:
-                detection_notes.append(f"{pack.metadata.pack_id}: confidence={result.confidence:.2f} ({result.reason})")
+                detection_notes.append(
+                    f"{pack.metadata.pack_id}: confidence={result.confidence:.2f} "
+                    f"({result.reason})"
+                )
                 if result.confidence > best_confidence:
                     best_pack = pack
                     best_confidence = result.confidence
@@ -301,7 +335,10 @@ class SourcePackRegistry:
             reason = (
                 "no registered Source Pack matched"
                 if not detection_notes
-                else f"no match above min_confidence={self.min_confidence}: {'; '.join(detection_notes)}"
+                else (
+                    f"no match above min_confidence={self.min_confidence}: "
+                    f"{'; '.join(detection_notes)}"
+                )
             )
             return ParsedEvent.unrecognized(raw, reason=reason, **context)
 
@@ -316,7 +353,10 @@ class SourcePackRegistry:
                 source_pack_version=best_pack.metadata.version,
                 error=ParseError(
                     code="SOURCE_PACK_EXCEPTION",
-                    message=f"Source Pack '{best_pack.metadata.pack_id}' raised during parse(): {exc}",
+                    message=(
+                        f"Source Pack '{best_pack.metadata.pack_id}' "
+                        f"raised during parse(): {exc}"
+                    ),
                     severity=ParseErrorSeverity.CRITICAL,
                     detail=repr(exc),
                 ),
@@ -328,6 +368,12 @@ class SourcePackRegistry:
 
 class CiscoASASourcePack(SourcePack):
     """Vendor: Cisco. Product: ASA. Parses fixed-format ASA syslog messages."""
+
+    pack_id = PACK_ID
+    priority = 100
+
+    def __init__(self, manifest_path=None) -> None:
+        self.manifest_path = manifest_path
 
     @property
     def metadata(self) -> SourcePackMetadata:
@@ -341,44 +387,79 @@ class CiscoASASourcePack(SourcePack):
             supported_formats=["Syslog"],
         )
 
-    def detect(self, raw: bytes) -> DetectionResult:
-        try:
-            text = raw.decode("utf-8", errors="replace")
-        except Exception:
-            return DetectionResult(matched=False, confidence=0.0, reason="undecodable payload")
+    def detect(
+        self,
+        envelope: CanonicalRawEventEnvelope | bytes,
+    ) -> float | DetectionResult:
+        """Detect ASA input using the canonical or transitional legacy API.
+
+        The source-pack registry passes a :class:`RawEventEnvelope` and expects
+        a numeric confidence.  The existing demo runner still passes bytes and
+        expects ``DetectionResult``; keeping that adapter here prevents the
+        contract migration from breaking the working vertical slice.
+        """
+
+        raw = envelope if isinstance(envelope, bytes) else envelope.raw_bytes()
+        confidence = self._detection_confidence(raw)
+
+        if isinstance(envelope, bytes):
+            return DetectionResult(
+                matched=confidence > 0.0,
+                confidence=confidence,
+                reason="Cisco ASA message tag detected" if confidence else "no ASA tag detected",
+            )
+        return confidence
+
+    @staticmethod
+    def _detection_confidence(raw: bytes) -> float:
+        text = raw.decode("utf-8", errors="replace")
 
         if _ASA_TAG_RE.search(text):
-            return DetectionResult(matched=True, confidence=0.98, reason="found %ASA-N-NNNNNN: tag")
+            return 0.98
 
         if "ASA-" in text and re.search(r"ASA-\d-\d{6}", text):
-            return DetectionResult(matched=True, confidence=0.4, reason="found degraded ASA-N-NNNNNN tag (missing '%')")
+            return 0.4
 
-        return DetectionResult(matched=False, confidence=0.0, reason="no ASA syslog tag found")
+        return 0.0
 
-    def parse(self, raw: bytes, **context) -> ParsedEvent:
-        try:
-            text = raw.decode("utf-8")
-            encoding_hint = "utf-8"
-        except UnicodeDecodeError:
-            text = raw.decode("utf-8", errors="replace")
-            encoding_hint = "utf-8 (replaced invalid bytes)"
+    def parse(
+        self,
+        envelope: CanonicalRawEventEnvelope | bytes,
+        **context: Any,
+    ) -> CanonicalParsedEvent | ParsedEvent:
+        """Parse with the canonical contract while adapting legacy byte callers."""
+
+        if isinstance(envelope, bytes):
+            canonical_envelope = CanonicalRawEventEnvelope.from_bytes(
+                envelope,
+                source_id=str(context.get("source_id", "legacy-cisco-runner")),
+                transport="api",
+            )
+            canonical_event = self._parse_canonical(canonical_envelope)
+            return self._to_legacy_event(canonical_event, envelope)
+
+        return self._parse_canonical(envelope)
+
+    def _parse_canonical(
+        self,
+        envelope: CanonicalRawEventEnvelope,
+    ) -> CanonicalParsedEvent:
+        raw = envelope.raw_bytes()
+        text = raw.decode("utf-8", errors="replace")
 
         header_match = _HEADER_RE.match(text.strip())
         if not header_match:
-            return ParsedEvent.failed(
-                raw,
-                vendor=self.metadata.vendor,
-                product=self.metadata.product,
-                source_pack_id=self.metadata.pack_id,
-                source_pack_version=self.metadata.version,
-                error=ParseError(
+            return self._canonical_event(
+                envelope,
+                CanonicalParseStatus.FAILED,
+                {},
+                (
+                    CanonicalParseIssue(
                     code="ASA_HEADER_NO_MATCH",
-                    message="Payload matched ASA detection but did not match the expected '%ASA-<severity>-<message_id>: <message>' header grammar.",
-                    severity=ParseErrorSeverity.CRITICAL,
-                    detail=text[:200],
+                        message="Payload does not match the Cisco ASA syslog header grammar",
+                        severity=CanonicalIssueSeverity.ERROR,
+                    ),
                 ),
-                encoding_hint=encoding_hint,
-                **context,
             )
 
         header = header_match.groupdict()
@@ -393,40 +474,101 @@ class CiscoASASourcePack(SourcePack):
             "message_text": header["message"],
         }
 
-        event = ParsedEvent.success(
-            raw,
-            vendor=self.metadata.vendor,
-            product=self.metadata.product,
-            source_pack_id=self.metadata.pack_id,
-            source_pack_version=self.metadata.version,
-            extracted_fields=extracted,
-            encoding_hint=encoding_hint,
-            **context,
-        )
+        issues: list[CanonicalParseIssue] = []
+        status = CanonicalParseStatus.SUCCESS
 
         message_parser = _MESSAGE_PARSERS.get(header["message_id"])
         if message_parser is None:
-            event.add_error(
-                code="ASA_UNKNOWN_MESSAGE_ID",
-                message=f"No field-layout parser registered for ASA message ID {header['message_id']}; only header fields were extracted.",
-                severity=ParseErrorSeverity.WARNING,
-                field="message_id",
+            status = CanonicalParseStatus.PARTIAL
+            issues.append(
+                CanonicalParseIssue(
+                    code="ASA_UNKNOWN_MESSAGE_ID",
+                    message=f"No parser registered for ASA message ID {header['message_id']}",
+                    severity=CanonicalIssueSeverity.WARNING,
+                    field="message_id",
+                )
             )
-            return event
+        else:
+            try:
+                extracted.update(message_parser(header["message"]))
+            except ValueError as exc:
+                status = CanonicalParseStatus.PARTIAL
+                issues.append(
+                    CanonicalParseIssue(
+                        code="ASA_MESSAGE_BODY_NO_MATCH",
+                        message=str(exc),
+                        severity=CanonicalIssueSeverity.ERROR,
+                        field="message",
+                    )
+                )
 
-        try:
-            detail_fields = message_parser(header["message"])
-            event.extracted_fields.update(detail_fields)
-        except ValueError as exc:
-            event.add_error(
-                code="ASA_MESSAGE_BODY_NO_MATCH",
-                message=str(exc),
-                severity=ParseErrorSeverity.ERROR,
-                field="message",
-                detail=header["message"][:200],
-            )
+        return self._canonical_event(envelope, status, extracted, tuple(issues))
 
-        return event
+    @staticmethod
+    def _to_legacy_event(
+        event: CanonicalParsedEvent,
+        raw: bytes,
+    ) -> ParsedEvent:
+        """Translate canonical output for the pre-migration demo normalizer."""
+
+        status_map = {
+            CanonicalParseStatus.SUCCESS: ParseStatus.SUCCESS,
+            CanonicalParseStatus.PARTIAL: ParseStatus.PARTIAL,
+            CanonicalParseStatus.FAILED: ParseStatus.FAILED,
+            CanonicalParseStatus.UNRECOGNIZED: ParseStatus.UNRECOGNIZED,
+        }
+        severity_map = {
+            CanonicalIssueSeverity.WARNING: ParseErrorSeverity.WARNING,
+            CanonicalIssueSeverity.ERROR: ParseErrorSeverity.ERROR,
+            CanonicalIssueSeverity.CRITICAL: ParseErrorSeverity.CRITICAL,
+        }
+
+        return ParsedEvent(
+            event_id=str(event.event_id),
+            vendor=event.vendor,
+            product=event.product,
+            source_pack_id=event.source_pack_id,
+            source_pack_version=event.source_pack_version,
+            parse_status=status_map[event.status],
+            parse_errors=[
+                ParseError(
+                    code=issue.code,
+                    message=issue.message,
+                    severity=severity_map[issue.severity],
+                    field=issue.field,
+                )
+                for issue in event.issues
+            ],
+            extracted_fields=dict(event.extracted_fields),
+            raw_event=RawEvent.from_bytes(raw),
+            parsed_at=event.parsed_at,
+        )
+
+    def _canonical_event(
+        self,
+        envelope: CanonicalRawEventEnvelope,
+        status: CanonicalParseStatus,
+        extracted_fields: dict[str, Any],
+        issues: tuple[CanonicalParseIssue, ...],
+    ) -> CanonicalParsedEvent:
+        from datetime import UTC
+
+        return CanonicalParsedEvent(
+            event_id=envelope.event_id,
+            parsed_at=datetime.now(UTC),
+            vendor="Cisco",
+            product="ASA",
+            product_version=None,
+            parser_id="cisco.asa.syslog",
+            parser_version=PACK_VERSION,
+            source_pack_id=PACK_ID,
+            source_pack_version=PACK_VERSION,
+            detected_format="syslog",
+            status=status,
+            issues=issues,
+            extracted_fields=extracted_fields,
+            raw_event=envelope,
+        )
 
 
 if __name__ == "__main__":
@@ -445,7 +587,8 @@ if __name__ == "__main__":
             b'123456 for outside:203.0.113.5/54321 (203.0.113.5/54321) to inside:10.0.0.5/443'
         ),
         "known tag, unknown message id": (
-            b'<166>Oct 12 2023 14:23:10 asa-fw1 : %ASA-5-999999: Some future message format we do not know yet'
+            b"<166>Oct 12 2023 14:23:10 asa-fw1 : %ASA-5-999999: "
+            b"Some future message format we do not know yet"
         ),
         "known tag, malformed body": (
             b'<166>Oct 12 2023 14:23:15 asa-fw1 : %ASA-4-106023: this is not a deny line at all'

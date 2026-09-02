@@ -18,10 +18,9 @@ codes to human-readable names.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
 
-from core.models import ParsedEvent, RawEventEnvelope
 from core.source_pack import SourcePackBase
+from src.contracts import ParsedEvent, RawEventEnvelope
 
 _FACILITY_NAMES = {
     0: "kern", 1: "user", 2: "mail", 3: "daemon", 4: "auth",
@@ -41,9 +40,10 @@ class GenericLinuxSyslogPack(SourcePackBase):
 
     def parse(self, envelope: RawEventEnvelope) -> ParsedEvent:
         parsed_event = super().parse(envelope)
-        facility_code = parsed_event.fields.get("syslog_facility")
+        fields = dict(parsed_event.extracted_fields)
+        facility_code = fields.get("syslog_facility")
         if isinstance(facility_code, str) and facility_code.isdigit():
             facility_code = int(facility_code)
         if isinstance(facility_code, int):
-            parsed_event.fields["syslog_facility_name"] = _FACILITY_NAMES.get(facility_code, "unknown")
-        return parsed_event
+            fields["syslog_facility_name"] = _FACILITY_NAMES.get(facility_code, "unknown")
+        return parsed_event.model_copy(update={"extracted_fields": fields})

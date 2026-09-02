@@ -10,15 +10,21 @@ SourcePackBase, with zero changes to core/.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
 from core.exceptions import FieldExtractionError, SourcePackValidationError
-from core.models import LogFormat, ParsedEvent, ParsingStatus, RawEventEnvelope, Severity
 from core.parsers import get_parser
+from src.contracts import (
+    ParsedEvent,
+    ParseIssue,
+    ParseIssueSeverity,
+    ParseStatus,
+    RawEventEnvelope,
+)
 
 _REQUIRED_MANIFEST_KEYS = ("pack", "detection", "format", "fields")
 
@@ -26,7 +32,7 @@ _REQUIRED_MANIFEST_KEYS = ("pack", "detection", "format", "fields")
 class DetectionRule:
     """A single source-detection rule, loaded from a manifest."""
 
-    def __init__(self, rule: Dict[str, Any]):
+    def __init__(self, rule: dict[str, Any]):
         self.type = rule.get("type")
         self.target = rule.get("target", "raw_payload")
         self.pattern = rule.get("pattern")
@@ -47,26 +53,23 @@ class DetectionRule:
             return value == self.equals
         return False
 
-    def _resolve_target(self, envelope: RawEventEnvelope) -> Optional[str]:
+    def _resolve_target(self, envelope: RawEventEnvelope) -> str | None:
         if self.target == "raw_payload":
-            return envelope.raw_payload
+            return envelope.raw_bytes().decode("utf-8", errors="replace")
         if self.target == "source_ip":
-            return envelope.source_ip
-        if self.target == "content_type_hint":
-            return envelope.content_type_hint
-        if self.target == "vendor_hint":
-            return envelope.vendor_hint
-        if self.target == "product_hint":
-            return envelope.product_hint
+            return str(envelope.source_ip) if envelope.source_ip is not None else None
+        if self.target in {"content_type_hint", "vendor_hint", "product_hint"}:
+            value = envelope.metadata.get(self.target)
+            return str(value) if value is not None else None
         return None
 
 
 class FieldRule:
     """One entry from the manifest's `fields:` list — maps a parsed key to an output field."""
 
-    def __init__(self, rule: Dict[str, Any]):
+    def __init__(self, rule: dict[str, Any]):
         self.name: str = rule["name"]
-        self.source: str = rule["source"]           # dotted path into parsed dict, e.g. "extension.src"
+        self.source: str = rule["source"]
         self.type: str = rule.get("type", "string")
         self.default: Any = rule.get("default")
         self.required: bool = rule.get("required", False)
@@ -84,7 +87,7 @@ class SourcePackBase:
 
     def __init__(self, manifest_path: Path):
         self.manifest_path = manifest_path
-        self.manifest: Dict[str, Any] = self._load_manifest(manifest_path)
+        self.manifest: dict[str, Any] = self._load_manifest(manifest_path)
         self._validate_manifest(self.manifest)
 
         pack_meta = self.manifest["pack"]
@@ -94,26 +97,25 @@ class SourcePackBase:
         self.pack_version: str = pack_meta["pack_version"]
 
         self.priority: int = self.manifest["detection"].get("priority", 0)
-        self.detection_rules: List[DetectionRule] = [
+        self.detection_rules: list[DetectionRule] = [
             DetectionRule(r) for r in self.manifest["detection"].get("rules", [])
         ]
 
         self.format_type: str = self.manifest["format"]["type"]
-        self.format_options: Dict[str, Any] = {
+        self.format_options: dict[str, Any] = {
             k: v for k, v in self.manifest["format"].items() if k != "type"
         }
 
-        self.field_rules: List[FieldRule] = [FieldRule(f) for f in self.manifest["fields"]]
+        self.field_rules: list[FieldRule] = [FieldRule(f) for f in self.manifest["fields"]]
 
     # -- loading / validation ---------------------------------------------
-
     @staticmethod
-    def _load_manifest(manifest_path: Path) -> Dict[str, Any]:
-        with open(manifest_path, "r", encoding="utf-8") as fh:
+    def _load_manifest(manifest_path: Path) -> dict[str, Any]:
+        with open(manifest_path, encoding="utf-8") as fh:
             return yaml.safe_load(fh)
 
     @staticmethod
-    def _validate_manifest(manifest: Dict[str, Any]) -> None:
+    def _validate_manifest(manifest: dict[str, Any]) -> None:
         missing = [k for k in _REQUIRED_MANIFEST_KEYS if k not in manifest]
         if missing:
             raise SourcePackValidationError(f"Manifest missing required section(s): {missing}")
@@ -133,45 +135,55 @@ class SourcePackBase:
 
     def parse(self, envelope: RawEventEnvelope) -> ParsedEvent:
         parser = get_parser(self.format_type)
-        parsed_dict = parser.parse(envelope.raw_payload, **self.format_options)
+        raw_text = envelope.raw_bytes().decode("utf-8", errors="replace")
+        parsed_dict = parser.parse(raw_text, **self.format_options)
 
-        errors: List[str] = []
-        fields: Dict[str, Any] = {}
+        issues: list[ParseIssue] = []
+        fields: dict[str, Any] = {}
         for rule in self.field_rules:
             try:
                 value = self._extract(parsed_dict, rule.source)
                 if value is None:
                     value = rule.default
                 if value is None and rule.required:
-                    raise FieldExtractionError(f"Required field '{rule.name}' not found (source={rule.source})")
+                    raise FieldExtractionError(
+                        f"Required field '{rule.name}' not found "
+                        f"(source={rule.source})"
+                    )
                 fields[rule.name] = value
             except FieldExtractionError as exc:
-                errors.append(str(exc))
+                issues.append(
+                    ParseIssue(
+                        code="FIELD_EXTRACTION_FAILED",
+                        message=str(exc),
+                        severity=ParseIssueSeverity.ERROR,
+                        field=rule.name,
+                    )
+                )
 
-        status = ParsingStatus.SUCCESS if not errors else ParsingStatus.PARTIAL
+        status = ParseStatus.SUCCESS if not issues else ParseStatus.PARTIAL
 
         return ParsedEvent(
             event_id=envelope.event_id,
-            source_pack_id=self.pack_id,
+            parsed_at=datetime.now(UTC),
             vendor=self.vendor,
             product=self.product,
-            pack_version=self.pack_version,
-            format_detected=self._to_log_format(self.format_type),
-            event_timestamp=self._coerce_timestamp(fields.get("timestamp")),
-            host=fields.get("hostname") or fields.get("host"),
-            severity=self._coerce_severity(fields.get("severity")),
-            event_category=fields.get("event_category"),
-            message=fields.get("message"),
-            fields=fields,
+            product_version=None,
+            parser_id=f"core.parsers.{self.format_type}",
+            parser_version="1.0.0",
+            source_pack_id=self.pack_id,
+            source_pack_version=self.pack_version,
+            detected_format=self.format_type,
             status=status,
-            errors=errors,
+            issues=tuple(issues),
+            extracted_fields=fields,
             raw_event=envelope,
         )
 
     # -- helpers --------------------------------------------------------------
 
     @staticmethod
-    def _extract(data: Dict[str, Any], dotted_path: str) -> Any:
+    def _extract(data: dict[str, Any], dotted_path: str) -> Any:
         """Resolve a dotted path like 'extension.src' against a nested dict."""
         current: Any = data
         for part in dotted_path.split("."):
@@ -182,46 +194,20 @@ class SourcePackBase:
         return current
 
     @staticmethod
-    def _to_log_format(format_type: str) -> LogFormat:
-        try:
-            return LogFormat(format_type)
-        except ValueError:
-            return LogFormat.UNKNOWN
-
-    @staticmethod
-    def _coerce_timestamp(value: Any) -> Optional[datetime]:
+    def _coerce_timestamp(value: Any) -> datetime | None:
         if value is None:
             return None
         if isinstance(value, datetime):
             return value
         if isinstance(value, str):
-            for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S%z", "%b %d %H:%M:%S"):
+            for fmt in (
+                "%Y-%m-%dT%H:%M:%S.%fZ",
+                "%Y-%m-%dT%H:%M:%SZ",
+                "%Y-%m-%dT%H:%M:%S%z",
+                "%b %d %H:%M:%S",
+            ):
                 try:
                     return datetime.strptime(value, fmt)
                 except ValueError:
                     continue
         return None
-
-    @staticmethod
-    def _coerce_severity(value: Any) -> Severity:
-        if value is None:
-            return Severity.UNKNOWN
-        text = str(value).strip().lower()
-        try:
-            return Severity(text)
-        except ValueError:
-            pass
-        # numeric severities (CEF 0-10, syslog 0-7) — coarse bucket mapping
-        try:
-            num = float(text)
-            if num >= 8:
-                return Severity.CRITICAL
-            if num >= 6:
-                return Severity.HIGH
-            if num >= 4:
-                return Severity.MEDIUM
-            if num >= 1:
-                return Severity.LOW
-            return Severity.INFO
-        except ValueError:
-            return Severity.UNKNOWN
