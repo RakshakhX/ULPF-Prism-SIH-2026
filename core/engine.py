@@ -62,7 +62,15 @@ class ParsingEngine:
             return ParsedEvent.unrecognized(envelope, "no matching source pack")
 
         try:
-            return pack.parse(envelope)
+            parsed = pack.parse(envelope)
+            if not isinstance(parsed, ParsedEvent):
+                raise TypeError("Source Pack parse() must return canonical ParsedEvent")
+            if (
+                parsed.raw_event.event_id != envelope.event_id
+                or parsed.raw_event.raw_sha256 != envelope.raw_sha256
+            ):
+                raise ValueError("Source Pack output does not reference the input raw event")
+            return parsed
         except ULPFError as exc:
             logger.warning(
                 "Source Pack '%s' failed to parse event %s: %s",
@@ -70,29 +78,40 @@ class ParsingEngine:
                 envelope.event_id,
                 exc,
             )
-            return self._failed_event(envelope, str(exc), pack.pack_id)
+            return self._failed_event(envelope, str(exc), pack)
         except Exception as exc:  # truly unexpected — still never crash the engine
             logger.exception(
                 "Unexpected error in Source Pack '%s' for event %s", pack.pack_id, envelope.event_id
             )
-            return self._failed_event(envelope, f"unexpected_error: {exc}", pack.pack_id)
+            return self._failed_event(envelope, f"unexpected_error: {exc}", pack)
 
-    def _failed_event(
-        self, envelope: RawEventEnvelope, reason: str, pack_id: str
-    ) -> ParsedEvent:
+    def _failed_event(self, envelope: RawEventEnvelope, reason: str, pack) -> ParsedEvent:
         from datetime import UTC, datetime
+
+        metadata = getattr(pack, "metadata", None)
+        pack_id = str(getattr(pack, "pack_id", "unknown"))
+        vendor = getattr(pack, "vendor", None) or getattr(metadata, "vendor", None)
+        product = getattr(pack, "product", None) or getattr(metadata, "product", None)
+        pack_version = getattr(pack, "pack_version", None) or getattr(
+            metadata,
+            "version",
+            None,
+        )
+        parser_id = getattr(pack, "parser_id", None) or f"{pack_id}.parser"
+        parser_version = getattr(pack, "parser_version", None) or pack_version or "1.0.0"
+        detected_format = getattr(pack, "format_type", None) or "unknown"
 
         return ParsedEvent(
             event_id=envelope.event_id,
             parsed_at=datetime.now(UTC),
-            vendor=None,
-            product=None,
+            vendor=vendor,
+            product=product,
             product_version=None,
-            parser_id="ulpf.source-pack-registry",
-            parser_version="1.0.0",
+            parser_id=parser_id,
+            parser_version=parser_version,
             source_pack_id=pack_id,
-            source_pack_version=None,
-            detected_format="unknown",
+            source_pack_version=pack_version,
+            detected_format=detected_format,
             status=ParseStatus.FAILED,
             issues=(
                 ParseIssue(

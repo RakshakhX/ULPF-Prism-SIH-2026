@@ -29,6 +29,51 @@ from src.contracts import (
 _REQUIRED_MANIFEST_KEYS = ("pack", "detection", "format", "fields")
 
 
+def validate_manifest(manifest: Any) -> dict[str, Any]:
+    """Validate the common structure required by every Source Pack."""
+
+    if not isinstance(manifest, dict):
+        raise SourcePackValidationError("Source Pack manifest must be a YAML mapping")
+
+    missing = [key for key in _REQUIRED_MANIFEST_KEYS if key not in manifest]
+    if missing:
+        raise SourcePackValidationError(f"Manifest missing required section(s): {missing}")
+
+    pack = manifest["pack"]
+    detection = manifest["detection"]
+    format_config = manifest["format"]
+    fields = manifest["fields"]
+    if not isinstance(pack, dict):
+        raise SourcePackValidationError("Manifest 'pack' section must be a mapping")
+    if not isinstance(detection, dict):
+        raise SourcePackValidationError("Manifest 'detection' section must be a mapping")
+    if not isinstance(format_config, dict):
+        raise SourcePackValidationError("Manifest 'format' section must be a mapping")
+    if not isinstance(fields, list) or not all(isinstance(field, dict) for field in fields):
+        raise SourcePackValidationError("Manifest 'fields' section must be a list of mappings")
+
+    for key in ("vendor", "product", "pack_version"):
+        if not isinstance(pack.get(key), str) or not pack[key].strip():
+            raise SourcePackValidationError(
+                f"Manifest 'pack' section requires a non-empty '{key}'"
+            )
+
+    priority = detection.get("priority", 0)
+    rules = detection.get("rules", [])
+    if isinstance(priority, bool) or not isinstance(priority, int):
+        raise SourcePackValidationError("Manifest detection priority must be an integer")
+    if not isinstance(rules, list) or not all(isinstance(rule, dict) for rule in rules):
+        raise SourcePackValidationError("Manifest detection rules must be a list of mappings")
+    if not isinstance(format_config.get("type"), str) or not format_config["type"].strip():
+        raise SourcePackValidationError("Manifest format requires a non-empty 'type'")
+    for field in fields:
+        if not isinstance(field.get("name"), str) or not isinstance(field.get("source"), str):
+            raise SourcePackValidationError(
+                "Every manifest field requires string 'name' and 'source' values"
+            )
+    return manifest
+
+
 class DetectionRule:
     """A single source-detection rule, loaded from a manifest."""
 
@@ -116,12 +161,7 @@ class SourcePackBase:
 
     @staticmethod
     def _validate_manifest(manifest: dict[str, Any]) -> None:
-        missing = [k for k in _REQUIRED_MANIFEST_KEYS if k not in manifest]
-        if missing:
-            raise SourcePackValidationError(f"Manifest missing required section(s): {missing}")
-        for key in ("vendor", "product", "pack_version"):
-            if key not in manifest["pack"]:
-                raise SourcePackValidationError(f"Manifest 'pack' section missing '{key}'")
+        validate_manifest(manifest)
 
     # -- detection ----------------------------------------------------------
 

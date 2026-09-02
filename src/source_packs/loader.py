@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import importlib
+import importlib.util
+import sys
+from numbers import Real
 from pathlib import Path
+from types import ModuleType
 from typing import Protocol
 
 import yaml
 
 from core.exceptions import SourcePackValidationError
-from core.source_pack import SourcePackBase
+from core.source_pack import SourcePackBase, validate_manifest
 from src.contracts import ParsedEvent, RawEventEnvelope
 
 
@@ -22,36 +25,87 @@ class SourcePackProtocol(Protocol):
     def parse(self, envelope: RawEventEnvelope) -> ParsedEvent: ...
 
 
+def _load_local_class(
+    manifest_path: Path,
+    module_name: str,
+    class_name: str,
+):
+    """Load an implementation only from the pack that declared it."""
+
+    parts = module_name.split(".")
+    pack_dir = manifest_path.parent.resolve()
+    if len(parts) < 3 or parts[:2] != ["source_packs", pack_dir.name]:
+        raise SourcePackValidationError(
+            "implementation module must be inside its declaring source_packs directory"
+        )
+
+    module_path = pack_dir.joinpath(*parts[2:]).with_suffix(".py").resolve()
+    if pack_dir not in module_path.parents or not module_path.is_file():
+        raise SourcePackValidationError(
+            f"implementation module does not exist inside the declaring pack: {module_name}"
+        )
+
+    package_name = ".".join(parts[:2])
+    package = ModuleType(package_name)
+    package.__path__ = [str(pack_dir)]  # type: ignore[attr-defined]
+    package.__package__ = package_name
+    sys.modules[package_name] = package
+
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise SourcePackValidationError(f"cannot create module spec for {module_name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    try:
+        return getattr(module, class_name)
+    except AttributeError as exc:
+        raise SourcePackValidationError(
+            f"implementation class does not exist: {module_name}:{class_name}"
+        ) from exc
+
+
+def _validate_runtime_pack(pack: object, manifest_path: Path) -> SourcePackProtocol:
+    pack_id = getattr(pack, "pack_id", None)
+    priority = getattr(pack, "priority", None)
+    if not isinstance(pack_id, str) or not pack_id or pack_id != manifest_path.parent.name:
+        raise SourcePackValidationError(
+            "Source Pack implementation pack_id must match its directory name"
+        )
+    if isinstance(priority, bool) or not isinstance(priority, Real):
+        raise SourcePackValidationError("Source Pack priority must be numeric")
+    for method_name in ("detect", "parse"):
+        if not callable(getattr(pack, method_name, None)):
+            raise SourcePackValidationError(
+                f"Source Pack implementation requires callable {method_name}()"
+            )
+    return pack  # type: ignore[return-value]
+
+
 def load_source_pack(manifest_path: Path) -> SourcePackProtocol:
     try:
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         raise SourcePackValidationError(f"cannot read Source Pack manifest: {exc}") from exc
-    if not isinstance(manifest, dict):
-        raise SourcePackValidationError("Source Pack manifest must be a YAML mapping")
+    manifest = validate_manifest(manifest)
 
     implementation = manifest.get("implementation")
     if not implementation:
-        return SourcePackBase(manifest_path)
+        return _validate_runtime_pack(SourcePackBase(manifest_path), manifest_path)
+    if not isinstance(implementation, str):
+        raise SourcePackValidationError("implementation must be a module:class string")
 
     try:
         module_name, class_name = implementation.split(":", 1)
     except ValueError as exc:
         raise SourcePackValidationError("implementation must use module:class syntax") from exc
-    if not module_name.startswith("source_packs."):
-        raise SourcePackValidationError("implementation module must be beneath source_packs")
-
     try:
-        implementation_class = getattr(importlib.import_module(module_name), class_name)
+        implementation_class = _load_local_class(manifest_path, module_name, class_name)
         pack = implementation_class(manifest_path)
+    except SourcePackValidationError:
+        raise
     except Exception as exc:
         raise SourcePackValidationError(
             f"cannot load Source Pack implementation {implementation}"
         ) from exc
-
-    for attribute in ("pack_id", "priority", "detect", "parse"):
-        if not hasattr(pack, attribute):
-            raise SourcePackValidationError(
-                f"Source Pack implementation is missing required attribute: {attribute}"
-            )
-    return pack
+    return _validate_runtime_pack(pack, manifest_path)

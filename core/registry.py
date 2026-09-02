@@ -12,6 +12,7 @@ engine to start routing matching events to it — no core code changes.
 from __future__ import annotations
 
 import logging
+from numbers import Real
 from pathlib import Path
 
 from core.exceptions import SourcePackLoadError, SourcePackValidationError
@@ -72,7 +73,14 @@ class SourcePackRegistry:
         """Return the highest-priority pack whose detection rules match, or None."""
         for pack in self._packs:
             try:
-                if pack.detect(envelope):
+                detection = pack.detect(envelope)
+                if isinstance(detection, bool):
+                    matched = detection
+                elif isinstance(detection, Real) and 0.0 <= float(detection) <= 1.0:
+                    matched = float(detection) > 0.0
+                else:
+                    raise ValueError("detect() must return bool or confidence from 0.0 to 1.0")
+                if matched:
                     return pack
             except Exception as exc:
                 logger.warning("Detection error in pack '%s': %s", pack.pack_id, exc)
