@@ -9,6 +9,7 @@ description = "Universal Log Pre-processing Framework prototype"
 requires-python = ">=3.11"
 dependencies = [
   "jsonschema[format]==4.26.0",
+  "pydantic>=2.6,<3.0",
   "PyYAML>=6.0,<7.0",
   "confluent-kafka==2.5.3",
   "psutil>=5.9,<7.0",
