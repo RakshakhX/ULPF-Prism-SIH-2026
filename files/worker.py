@@ -5,8 +5,9 @@ worker.py — ULPF consumer-group worker
 Roles (selected with --role):
 
   parser         raw-event        -> parsed-event | retry | dead-letter
+  normalizer     parsed-event     -> normalized-event | retry | dead-letter
   retry-handler  retry             -> parsed-event | retry | dead-letter
-                                       (honors per-event backoff-until time)
+                                    or normalized-event, based on retry_stage
   replay         raw-event (from a historical offset/timestamp, using a
                  fresh consumer group) -> parsed-event | retry | dead-letter
 
@@ -25,21 +26,18 @@ CORRECTNESS RULES THIS WORKER ENFORCES
    in-flight produce for that batch has been ACKed or has permanently
    failed-and-been-handled).
 
-2. Deterministic event IDs. event_id = sha256(raw_bytes). Same raw
-   bytes -> same event_id, always -- whether seen the first time, via
-   retry, or via replay. This is what makes downstream consumers able
-   to do idempotent upserts and treat duplicate delivery (an inherent
-   property of at-least-once + replay) as a no-op instead of a
-   correctness bug.
+2. Stable envelope event IDs. The collector assigns the canonical event ID
+   once, and parser, normalizer, retry, and replay preserve it unchanged.
+   The separately retained SHA-256 proves raw-byte integrity. This lets
+   downstream consumers perform idempotent upserts for retry/replay delivery
+   without incorrectly merging two independently collected identical logs.
 
-3. Poison vs. transient failure are handled differently:
-     - Poison (ParseError): the payload itself is structurally invalid.
-       Retrying identical bytes will fail identically forever, so a
-       poison event is routed straight to dead-letter — no wasted
-       retry-topic churn, no head-of-line blocking of good events.
-     - Transient (TransientError): a downstream dependency issue.
+3. Contract-invalid vs. transient failure are handled differently:
+     - Invalid canonical input will fail identically forever, so it is
+       routed straight to dead-letter with the original bytes intact.
+     - TransientProcessingError signals a downstream dependency issue.
        Routed to `retry` with an exponential backoff "not-before"
-       timestamp in the header, and only DLQ'd after MAX_TRANSIENT_RETRIES.
+       delay in the header, and only DLQ'd after MAX_TRANSIENT_RETRIES.
 
 4. Graceful shutdown: SIGTERM/SIGINT sets a flag checked every poll
    iteration; on exit we flush the producer and issue a final synchronous
@@ -69,6 +67,23 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "src").is_dir() else SCRIPT_DIR
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.streaming import (  # noqa: E402
+    DEAD_LETTER_TOPIC,
+    NORMALIZED_EVENT_TOPIC,
+    PARSED_EVENT_TOPIC,
+    RAW_EVENT_TOPIC,
+    RETRY_TOPIC,
+    RetryProcessorRouter,
+    build_normalizer_processor,
+    build_parser_processor,
+)
 
 try:
     import psutil
@@ -76,7 +91,7 @@ except ImportError:  # pragma: no cover
     psutil = None
 
 try:
-    from confluent_kafka import Consumer, Producer, TopicPartition, KafkaError
+    from confluent_kafka import Consumer, KafkaError, Producer, TopicPartition
 except ImportError:  # pragma: no cover
     Consumer = Producer = TopicPartition = KafkaError = None
 
@@ -85,10 +100,9 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 
-RAW_TOPIC = "raw-event"
-PARSED_TOPIC = "parsed-event"
-RETRY_TOPIC = "retry"
-DEAD_LETTER_TOPIC = "dead-letter"
+RAW_TOPIC = RAW_EVENT_TOPIC
+PARSED_TOPIC = PARSED_EVENT_TOPIC
+NORMALIZED_TOPIC = NORMALIZED_EVENT_TOPIC
 METRICS_TOPIC = "framework-metrics"
 
 MAX_TRANSIENT_RETRIES = 5
@@ -229,7 +243,12 @@ class MetricsWindow:
 
     def to_event(self, window_end: float) -> dict:
         lat = list(self.latencies_ms)
-        pct = lambda p: (statistics.quantiles(lat, n=100)[p - 1] if len(lat) >= 2 else (lat[0] if lat else 0.0))
+
+        def pct(percentile: int) -> float:
+            if len(lat) >= 2:
+                return statistics.quantiles(lat, n=100)[percentile - 1]
+            return lat[0] if lat else 0.0
+
         return {
             "worker_id": self.worker_id,
             "role": self.role,
@@ -293,8 +312,31 @@ class Worker:
             "batch.size": 512 * 1024,
         })
 
+        packs_dir = Path(os.environ.get("ULPF_SOURCE_PACKS_DIR", "source_packs"))
+        parser_processor = build_parser_processor(
+            packs_dir,
+            max_attempts=MAX_TRANSIENT_RETRIES,
+            backoff_base_seconds=BACKOFF_BASE_SECONDS,
+            backoff_cap_seconds=BACKOFF_CAP_SECONDS,
+        )
+        normalizer_processor = build_normalizer_processor(
+            max_attempts=MAX_TRANSIENT_RETRIES,
+            backoff_base_seconds=BACKOFF_BASE_SECONDS,
+            backoff_cap_seconds=BACKOFF_CAP_SECONDS,
+        )
+        self.processor = {
+            "parser": parser_processor,
+            "normalizer": normalizer_processor,
+            "retry-handler": RetryProcessorRouter(
+                parser=parser_processor,
+                normalizer=normalizer_processor,
+            ),
+            "replay": parser_processor,
+        }[role]
+
         self.source_topic = {
             "parser": RAW_TOPIC,
+            "normalizer": PARSED_TOPIC,
             "retry-handler": RETRY_TOPIC,
             "replay": RAW_TOPIC,
         }[role]
@@ -331,7 +373,10 @@ class Worker:
             tps = [TopicPartition(self.source_topic, p) for p in partitions]
             self.consumer.assign(tps)
             if self._replay_from_ts_ms is not None:
-                search = [TopicPartition(self.source_topic, p, self._replay_from_ts_ms) for p in partitions]
+                search = [
+                    TopicPartition(self.source_topic, partition, self._replay_from_ts_ms)
+                    for partition in partitions
+                ]
                 resolved = self.consumer.offsets_for_times(search, timeout=15)
                 self.consumer.assign(resolved)
                 self.log.info("replay: seeked to timestamp %d across %d partitions",
@@ -357,8 +402,7 @@ class Worker:
 
     # ---- core processing ---------------------------------------------------
     def _process_one(self, msg) -> None:
-        raw = msg.value()
-        key = msg.key() or b"unknown-source"
+        payload = msg.value()
         headers = msg.headers() or []
         received_at = time.time()
 
@@ -368,71 +412,58 @@ class Worker:
         else:
             first_seen_ts = float(first_seen.decode())
 
-        attempt = int((get_header(headers, "ulpf_attempt") or b"0").decode())
-        event_id = compute_event_id(raw)  # rule #2: always recomputed, never trusted blindly
+        attempt_header = get_header(headers, "attempt") or get_header(headers, "ulpf_attempt")
+        attempt = int((attempt_header or b"0").decode())
 
-        not_before = get_header(headers, "ulpf_not_before_ts")
+        not_before = get_header(headers, "retry_not_before_epoch_ms")
         if self.role == "retry-handler" and not_before is not None:
-            wait_s = float(not_before.decode()) - time.time()
-            if wait_s > 0:
-                time.sleep(min(wait_s, 2.0))
-                # If still not due after a short sleep, put it back for a
-                # later poll cycle rather than blocking the whole partition.
-                if float(not_before.decode()) - time.time() > 0:
-                    self._produce(RETRY_TOPIC, key, raw, headers)
+            wait_seconds = (int(not_before.decode()) / 1000) - time.time()
+            if wait_seconds > 0:
+                time.sleep(min(wait_seconds, 2.0))
+                if (int(not_before.decode()) / 1000) > time.time():
+                    self._produce(
+                        RETRY_TOPIC,
+                        msg.key() or b"unknown-event",
+                        payload,
+                        headers,
+                    )
                     self.metrics.retry_count += 1
                     return
 
         self.metrics.consumed_count += 1
-        self.metrics.bytes_in += len(raw)
+        self.metrics.bytes_in += len(payload)
 
-        try:
-            parsed = parse_pfsense_log(raw)
-            parsed["event_id"] = event_id
-            parsed["source_key"] = key.decode(errors="replace")
-            parsed["ingest_attempt"] = attempt
-            parsed["first_seen_ts"] = first_seen_ts
-            parsed["processed_ts"] = time.time()
+        processor = self.processor
+        route_by_stage = getattr(processor, "for_headers", None)
+        if route_by_stage is not None:
+            decoded_headers = {
+                name: value.decode("utf-8") if isinstance(value, bytes) else str(value)
+                for name, value in headers
+            }
+            processor = route_by_stage(decoded_headers)
 
-            out_value = json.dumps(parsed).encode("utf-8")
-            out_headers = headers_with(
-                headers,
-                ulpf_event_id=event_id,
-                ulpf_first_seen_ts=str(first_seen_ts),
-                ulpf_original_topic=self.source_topic,
-            )
-            self._produce(PARSED_TOPIC, key, out_value, out_headers)
+        decision = processor.process(payload, attempt=attempt)
+        out_headers = headers_with(
+            headers,
+            **decision.headers,
+            ulpf_event_id=decision.event_id,
+            ulpf_first_seen_ts=str(first_seen_ts),
+            ulpf_original_topic=self.source_topic,
+        )
+        self._produce(
+            decision.topic,
+            decision.key.encode("utf-8"),
+            decision.payload,
+            out_headers,
+        )
+        if decision.topic == RETRY_TOPIC:
+            self.metrics.retry_count += 1
+        elif decision.topic == DEAD_LETTER_TOPIC:
+            self.metrics.dead_letter_count += 1
+        else:
             self.metrics.produced_count += 1
-            self.metrics.bytes_out += len(out_value)
-            self.metrics.record_latency((time.time() - first_seen_ts) * 1000.0)
-
-        except ParseError as e:
-            # Poison: deterministic failure, don't waste retry-topic churn.
-            self.log.warning("poison event_id=%s -> dead-letter: %s", event_id, e)
-            self._route_dead_letter(key, raw, headers, event_id, first_seen_ts,
-                                     attempt, reason=f"parse_error: {e}")
-
-        except TransientError as e:
-            next_attempt = attempt + 1
-            if next_attempt > MAX_TRANSIENT_RETRIES:
-                self.log.warning("event_id=%s exceeded max retries -> dead-letter", event_id)
-                self._route_dead_letter(key, raw, headers, event_id, first_seen_ts,
-                                         attempt, reason=f"max_retries_exceeded: {e}")
-            else:
-                backoff = min(BACKOFF_BASE_SECONDS * (2 ** attempt), BACKOFF_CAP_SECONDS)
-                out_headers = headers_with(
-                    headers,
-                    ulpf_event_id=event_id,
-                    ulpf_attempt=str(next_attempt),
-                    ulpf_first_seen_ts=str(first_seen_ts),
-                    ulpf_not_before_ts=str(time.time() + backoff),
-                    ulpf_last_error=str(e)[:512],
-                    ulpf_original_topic=self.source_topic,
-                )
-                self._produce(RETRY_TOPIC, key, raw, out_headers)
-                self.metrics.retry_count += 1
-                self.log.info("event_id=%s transient failure, attempt=%d, retry in %ss: %s",
-                              event_id, next_attempt, backoff, e)
+        self.metrics.bytes_out += len(decision.payload)
+        self.metrics.record_latency((time.time() - first_seen_ts) * 1000.0)
 
     def _route_dead_letter(self, key, raw, headers, event_id, first_seen_ts, attempt, reason):
         out_headers = headers_with(
@@ -489,10 +520,13 @@ class Worker:
             return
         if self._produce_errors:
             self.log.error(
-                "%d produce error(s) this batch; withholding offset commit: %s",
+                "%d produce error(s) this batch; stopping without an offset commit: %s",
                 len(self._produce_errors), self._produce_errors[:3],
             )
-            self._produce_errors.clear()
+            # Continuing and clearing this error would let a later commit
+            # advance past a record whose output was never delivered. Stop
+            # so the process can restart from its last committed offset.
+            self._running = False
             return
 
         self.consumer.commit(asynchronous=False)
@@ -548,7 +582,11 @@ class Worker:
 def main():
     ap = argparse.ArgumentParser(description="ULPF worker")
     ap.add_argument("--brokers", default="localhost:9092")
-    ap.add_argument("--role", choices=["parser", "retry-handler", "replay"], required=True)
+    ap.add_argument(
+        "--role",
+        choices=["parser", "normalizer", "retry-handler", "replay"],
+        required=True,
+    )
     ap.add_argument("--group-id", default=None,
                      help="Defaults to ulpf-<role>-group; use a distinct group id "
                           "per replay run so it doesn't collide with live consumers.")

@@ -53,9 +53,7 @@ def _canonical_from_legacy(parsed: CiscoParsedEvent | CoreParsedEvent) -> Parsed
         product = parsed.product
         status_value = parsed.status.value
         extracted = dict(parsed.fields)
-        issue_values = [
-            ("LEGACY_PARSE_ERROR", message, "error", None) for message in parsed.errors
-        ]
+        issue_values = [("LEGACY_PARSE_ERROR", message, "error", None) for message in parsed.errors]
         parsed_at = parsed.parsed_at
         legacy_event_id = parsed.event_id
 

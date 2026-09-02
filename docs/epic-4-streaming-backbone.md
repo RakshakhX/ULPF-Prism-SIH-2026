@@ -8,7 +8,8 @@ The repository now includes the core backbone artifacts:
 
 - topic bootstrap and partition configuration in `files/setup_topics.py`
 - Kafka-style worker runner in `files/worker.py`
-- synthetic pfSense load generator in `files/load_gen.py`
+- canonical-envelope, multi-vendor load generator in `files/load_gen.py`
+- transport-independent decisions and Kafka adapter in `src/streaming/`
 - metrics aggregation in `files/metrics_report.py`
 - local Redpanda benchmark stack in `files/docker-compose.yml`
 
@@ -31,7 +32,8 @@ Retention and compression settings are intentionally tuned for durable replay an
 
 Partition key choice:
 
-- raw-event / parsed-event / normalized-event: source identity (device or host)
+- raw-event: source identity (device or host)
+- parsed-event / normalized-event: canonical event ID
 - retry / dead-letter: event ID
 - framework-metrics: worker ID
 
@@ -48,9 +50,10 @@ A worker group can only consume as many partitions in parallel as there are assi
 
 ## Worker execution model
 
-The worker runner supports three roles:
+The worker runner supports four roles:
 
 - parser
+- normalizer
 - retry-handler
 - replay
 
@@ -58,8 +61,9 @@ The worker includes:
 
 - manual offset commit after durable produce ack
 - graceful shutdown via SIGINT/SIGTERM
-- deterministic event IDs via SHA-256 of raw payload bytes
-- poison-event routing to dead-letter
+- stable collector-assigned event IDs preserved across every stage
+- raw SHA-256 retained independently for evidence integrity
+- contract-invalid event routing to dead-letter
 - transient failure routing to retry with backoff
 - replay mode keyed to timestamp or offset range
 
@@ -76,7 +80,7 @@ The streaming design is intended to tolerate:
 - dead-letter routing
 - backlog recovery
 
-The code makes replay and idempotent downstream handling safe because event IDs are deterministic and the raw-event topic is retained as durable evidence.
+The code makes replay and idempotent downstream handling safe because the canonical envelope's event ID is preserved unchanged and the raw-event topic is retained as durable evidence.
 
 ## Synthetic load generator
 

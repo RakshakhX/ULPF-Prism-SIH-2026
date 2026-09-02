@@ -93,9 +93,7 @@ class UniversalNormalizer:
         # Keep the complete extracted namespace. Canonical fields may coerce
         # values (for example, port text to an integer), and rejected values
         # must remain available for forensics instead of disappearing.
-        source_fields = {
-            key: _json_value(value) for key, value in parsed.extracted_fields.items()
-        }
+        source_fields = {key: _json_value(value) for key, value in parsed.extracted_fields.items()}
         mapping_name = mapping.source_pack_id if mapping is not None else "unknown"
         mapping_version = mapping.version if mapping is not None else "0.0.0"
 

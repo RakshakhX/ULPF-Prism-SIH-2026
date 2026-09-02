@@ -5,6 +5,10 @@ WORKDIR /app
 COPY requirements-dev.txt .
 RUN pip install --no-cache-dir -r requirements-dev.txt
 
+COPY core/ ./core/
+COPY src/ ./src/
+COPY source_packs/ ./source_packs/
+COPY schemas/ ./schemas/
 COPY files/setup_topics.py files/worker.py files/load_gen.py files/metrics_report.py files/benchmark_metrics.py ./
 
 ENTRYPOINT ["python"]

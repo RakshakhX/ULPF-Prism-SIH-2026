@@ -34,9 +34,7 @@ def test_deserialization_rejects_hash_mismatch() -> None:
     )
 
     with pytest.raises(ValidationError, match="raw evidence size or SHA-256 mismatch"):
-        RawEventEnvelope.model_validate(
-            {**event.model_dump(), "raw_sha256": "0" * 64}
-        )
+        RawEventEnvelope.model_validate({**event.model_dump(), "raw_sha256": "0" * 64})
 
 
 def test_deserialization_rejects_size_mismatch() -> None:
@@ -98,6 +96,4 @@ def test_contract_rejects_non_utc_ingestion_timestamp(invalid_timestamp: str) ->
     )
 
     with pytest.raises(ValidationError, match="ingested_at must be an aware UTC timestamp"):
-        RawEventEnvelope.model_validate(
-            {**event.model_dump(), "ingested_at": invalid_timestamp}
-        )
+        RawEventEnvelope.model_validate({**event.model_dump(), "ingested_at": invalid_timestamp})

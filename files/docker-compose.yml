@@ -82,6 +82,20 @@ services:
         condition: on-failure
     stop_grace_period: 30s   # give SIGTERM handling room to flush + commit
 
+  worker-normalizer:
+    build:
+      context: ..
+      dockerfile: files/Dockerfile
+    command: ["worker.py", "--role", "normalizer", "--brokers", "redpanda:9092",
+               "--group-id", "ulpf-normalizer-group"]
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    deploy:
+      restart_policy:
+        condition: on-failure
+    stop_grace_period: 30s
+
   worker-retry:
     build:
       context: ..

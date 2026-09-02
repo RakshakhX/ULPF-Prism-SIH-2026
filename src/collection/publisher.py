@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Protocol
 
 from src.contracts import RawEventEnvelope
-
-RAW_EVENT_TOPIC = "raw-event-stream"  # agreed shared topic name
+from src.streaming.topics import RAW_EVENT_TOPIC
 
 
 class RawEventPublisher(Protocol):

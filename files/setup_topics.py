@@ -9,9 +9,8 @@ tuned for a "billions of events/day" workload.
 -------------------------------------------------------------------------
 PARTITION KEY STRATEGY (read this before changing partition counts)
 -------------------------------------------------------------------------
-raw-event / parsed-event / normalized-event are all produced with the same
-key: the log SOURCE identity (pfSense hostname or source IP), e.g.
-b"fw-edge-0042". Rationale:
+raw-event is keyed by log SOURCE identity (device hostname or source IP),
+e.g. b"fw-edge-0042". Rationale:
 
   * Per-source ordering. A single firewall's event stream must be
     processed in order (state-table transitions, dedup windows, etc).
@@ -21,17 +20,14 @@ b"fw-edge-0042". Rationale:
     thousands-to-hundreds-of-thousands of edge devices, so source
     cardinality vastly exceeds partition count -> good load balance
     even though the key space isn't uniformly hashed by design.
-  * Partition affinity across stages. Propagating the same key from
-    raw -> parsed -> normalized means a worker pinned to partition N
-    keeps seeing the same sources on every hop, so per-source caches
-    (device metadata, GeoIP, dedup LRU) stay hot instead of thrashing.
+parsed-event / normalized-event / retry / dead-letter are keyed by canonical
+EVENT ID. The collector assigns this UUID once and every stage preserves it.
+That key enables traceability and idempotent retry/replay handling without
+incorrectly merging two independently collected logs that happen to contain
+identical bytes.
 
-retry / dead-letter are keyed by EVENT ID, not source. At that point we
-explicitly want to break source-affinity: one poisoned event from
-source A must not create head-of-line blocking for source A's healthy
-traffic sitting behind it in a retry/DLQ partition. Individual event
-traceability matters more than per-source order once something has
-already failed.
+Retry and dead-letter also deliberately break source affinity: one failed
+event from source A must not head-of-line block source A's healthy traffic.
 
 framework-metrics is keyed by worker_id (one logical stream per worker
 instance, cheap to fan out to a single metrics aggregator consumer).
@@ -43,8 +39,8 @@ import argparse
 import logging
 import sys
 
-from confluent_kafka.admin import AdminClient, NewTopic
 from confluent_kafka import KafkaException
+from confluent_kafka.admin import AdminClient, NewTopic
 
 logging.basicConfig(
     level=logging.INFO,

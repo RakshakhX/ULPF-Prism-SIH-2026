@@ -8,7 +8,7 @@ strategy — see setup_topics.py). Designed for benchmarking the pipeline
 under realistic-but-controllable conditions:
 
   * sustained EPS with periodic bursts (token-bucket-ish pacing)
-  * malformed-event injection (poison events, to exercise dead-lettering)
+  * malformed source-log injection (to exercise partial/unrecognized parsing)
   * duplicate-event injection (to exercise idempotent/dedup behavior)
   * timestamp jitter incl. occasional out-of-order / late-arriving events
   * a configurable pool of synthetic source devices/IPs
@@ -28,17 +28,23 @@ from dataclasses import dataclass
 from pathlib import Path
 
 FILE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = FILE_DIR.parent if (FILE_DIR.parent / "src").is_dir() else FILE_DIR
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 if str(FILE_DIR) not in sys.path:
     sys.path.insert(0, str(FILE_DIR))
 
-from benchmark_metrics import summarize_metrics_window
+from benchmark_metrics import summarize_metrics_window  # noqa: E402,F401
+
+from src.contracts import RawEventEnvelope  # noqa: E402
+from src.streaming import RAW_EVENT_TOPIC  # noqa: E402
 
 try:
     from confluent_kafka import Producer
 except ImportError:  # pragma: no cover
     Producer = None
 
-RAW_TOPIC = "raw-event"
+RAW_TOPIC = RAW_EVENT_TOPIC
 
 ACTIONS = ["pass", "block", "reject", "match"]
 PROTOCOLS = [("tcp", 6), ("udp", 17), ("icmp", 1)]
@@ -52,6 +58,21 @@ class Source:
     ip: str
 
 
+def build_envelope_for_source(raw: bytes, source: Source, vendor: str) -> bytes:
+    """Wrap generated device bytes in the same contract used by real collectors."""
+
+    envelope = RawEventEnvelope.from_bytes(
+        raw,
+        source_id=source.hostname,
+        source_ip=source.ip,
+        transport="api",
+        collector_id="ulpf-load-generator",
+        collector_version="0.1.0",
+        metadata={"simulated": True, "simulated_vendor": vendor},
+    )
+    return envelope.model_dump_json().encode("utf-8")
+
+
 def make_sources(n: int) -> list[Source]:
     sources = []
     for i in range(n):
@@ -62,7 +83,13 @@ def make_sources(n: int) -> list[Source]:
 
 
 def random_public_ip() -> str:
-    return f"{random.randint(1,223)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}"
+    octets = (
+        random.randint(1, 223),
+        random.randint(0, 255),
+        random.randint(0, 255),
+        random.randint(1, 254),
+    )
+    return ".".join(str(octet) for octet in octets)
 
 
 def format_syslog_ts(ts: float) -> str:
@@ -92,7 +119,8 @@ def build_filterlog_line(src: Source, ts: float, rule_num: int = None) -> str:
     ]
     body = ",".join(fields)
     pri = 134
-    return f"<{pri}>1 {format_syslog_ts(ts)} {src.hostname} filterlog {random.randint(100,99999)} - - {body}"
+    process_id = random.randint(100, 99999)
+    return f"<{pri}>1 {format_syslog_ts(ts)} {src.hostname} filterlog {process_id} - - {body}"
 
 
 def build_fortinet_line(src: Source, ts: float, *, target_size: int | None = None) -> str:
@@ -130,7 +158,13 @@ def _resize_payload(payload: str, target_size: int | None) -> str:
     return payload[: max(1, target_size - 32)]
 
 
-def build_event_for_vendor(vendor: str, src: Source, ts: float, *, target_size: int | None = None) -> str:
+def build_event_for_vendor(
+    vendor: str,
+    src: Source,
+    ts: float,
+    *,
+    target_size: int | None = None,
+) -> str:
     """Dispatch to a vendor-specific event generator for benchmark flexibility."""
     vendor = (vendor or "pfsense").lower()
     if vendor == "pfsense":
@@ -193,7 +227,11 @@ def main():
     ap = argparse.ArgumentParser(description="ULPF synthetic load generator")
     ap.add_argument("--brokers", default="localhost:9092")
     ap.add_argument("--topic", default=RAW_TOPIC)
-    ap.add_argument("--vendor", choices=["pfsense", "fortinet", "linux", "generic-linux", "syslog"], default="pfsense")
+    ap.add_argument(
+        "--vendor",
+        choices=["pfsense", "fortinet", "linux", "generic-linux", "syslog"],
+        default="pfsense",
+    )
     ap.add_argument("--sustained-eps", type=float, default=1000.0)
     ap.add_argument("--burst-eps", type=float, default=0.0, help="0 disables bursting")
     ap.add_argument("--burst-every-seconds", type=float, default=60.0)
@@ -209,7 +247,8 @@ def main():
 
     if Producer is None:
         raise RuntimeError(
-            "confluent-kafka is required to run the load generator. Install the project dependencies with: "
+            "confluent-kafka is required to run the load generator. "
+            "Install the project dependencies with: "
             "python -m pip install -r requirements-dev.txt"
         )
 
@@ -277,7 +316,8 @@ def main():
                     line = corrupt(line)
                     malformed_this_second += 1
 
-                payload = line.encode("utf-8", errors="replace")
+                raw = line.encode("utf-8", errors="replace")
+                payload = build_envelope_for_source(raw, src, args.vendor)
                 producer.produce(
                     topic=args.topic,
                     key=src.hostname.encode(),

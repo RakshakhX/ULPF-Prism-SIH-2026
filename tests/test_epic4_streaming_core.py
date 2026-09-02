@@ -33,6 +33,21 @@ def test_corrupt_produces_malformed_payload():
     assert result != line
 
 
+def test_load_generator_emits_canonical_lossless_envelope():
+    from src.contracts import RawEventEnvelope
+
+    source = load_gen.Source(hostname="fw-edge-0001", ip="10.0.0.1")
+    raw = b"<134>1 2026-08-31T00:00:00Z fw-edge-0001 filterlog - - - event"
+
+    encoded = load_gen.build_envelope_for_source(raw, source, "pfsense")
+    envelope = RawEventEnvelope.model_validate_json(encoded)
+
+    assert envelope.raw_bytes() == raw
+    assert envelope.source_id == source.hostname
+    assert str(envelope.source_ip) == source.ip
+    assert envelope.metadata["simulated_vendor"] == "pfsense"
+
+
 def test_metrics_summary_computes_expected_values():
     per_worker = {
         "worker-a": {
@@ -77,6 +92,44 @@ def test_event_id_is_deterministic_for_identical_payloads():
     raw = b"<134>1 2026-08-31T00:00:00Z fw-edge-0001 filterlog 123 - - valid,event"
     assert worker.compute_event_id(raw) == worker.compute_event_id(raw)
     assert worker.compute_event_id(raw) != worker.compute_event_id(b"different payload")
+
+
+def test_streaming_container_includes_canonical_runtime_and_normalizer_worker():
+    dockerfile = (ROOT / "files/Dockerfile").read_text(encoding="utf-8")
+    compose = (ROOT / "files/docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "COPY src/ ./src/" in dockerfile
+    assert "COPY core/ ./core/" in dockerfile
+    assert "COPY source_packs/ ./source_packs/" in dockerfile
+    assert "worker-normalizer:" in compose
+    assert '"--role", "normalizer"' in compose
+
+
+def test_live_worker_stops_without_committing_after_delivery_error():
+    class Producer:
+        def flush(self, _timeout):
+            return 0
+
+    class Consumer:
+        committed = False
+
+        def commit(self, *, asynchronous):
+            self.committed = True
+
+    instance = object.__new__(worker.Worker)
+    instance.producer = Producer()
+    instance.consumer = Consumer()
+    instance.log = __import__("logging").getLogger("worker-test")
+    instance._uncommitted = 1
+    instance._last_commit = 0.0
+    instance._produce_errors = ["broker rejected output"]
+    instance._running = True
+
+    instance._maybe_commit(force=True)
+
+    assert instance.consumer.committed is False
+    assert instance._running is False
+    assert instance._produce_errors == ["broker rejected output"]
 
 
 def test_parse_pfsense_log_accepts_valid_payload_and_rejects_invalid_payload():

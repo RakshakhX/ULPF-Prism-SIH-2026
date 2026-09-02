@@ -51,9 +51,7 @@ def test_parse_106023_success_preserves_canonical_evidence(
 
 
 def test_parse_unknown_message_id_is_partial(pack: CiscoASASourcePack) -> None:
-    raw = envelope(
-        b"<166>Oct 12 2023 14:23:10 asa-fw1 : %ASA-5-999999: Some future message format"
-    )
+    raw = envelope(b"<166>Oct 12 2023 14:23:10 asa-fw1 : %ASA-5-999999: Some future message format")
     event = pack.parse(raw)
 
     assert event.status is ParseStatus.PARTIAL

@@ -51,9 +51,7 @@ class FortinetFortigateMapping:
         original_action = str(fields.get("action") or fields.get("status") or "unknown")
         action_text = original_action.lower()
         is_authentication = (
-            action_text == "login"
-            and isinstance(fields.get("user"), str)
-            and bool(fields["user"])
+            action_text == "login" and isinstance(fields.get("user"), str) and bool(fields["user"])
         )
         if is_authentication:
             normalized_action = "authenticate"
