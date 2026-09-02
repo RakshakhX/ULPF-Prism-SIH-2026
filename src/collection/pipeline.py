@@ -55,6 +55,42 @@ class CollectionPipeline:
     def dedup_size(self) -> int:
         return len(self._seen_hashes)
 
+    def _record_rejection(
+        self,
+        raw: bytes,
+        transport: str,
+        reason: str,
+        source_ip: str | None,
+        source_id: str | None,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        if self.rejected_log is None:
+            return
+        try:
+            self.rejected_log.record(raw, transport, reason, source_ip, source_id, metadata)
+        except OSError:
+            # Rejection persistence must not replace the stable ingest outcome.
+            return
+
+    def reject(
+        self,
+        raw: bytes,
+        transport: str,
+        reason: str,
+        *,
+        source_ip: str | None = None,
+        source_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> IngestResult:
+        """Durably account for a collector-level framing rejection."""
+
+        start = time.monotonic()
+        self.metrics.record_received(len(raw))
+        self._record_rejection(raw, transport, reason, source_ip, source_id, metadata)
+        self.metrics.record_rejected()
+        self.metrics.record_latency(start)
+        return IngestResult(accepted=False, envelope=None, reason=reason)
+
     def ingest(
         self,
         raw: bytes,
@@ -72,16 +108,14 @@ class CollectionPipeline:
         if size == 0:
             reason = "empty_event"
             self.metrics.record_rejected()
-            if self.rejected_log:
-                self.rejected_log.record(raw, transport, reason, source_ip, source_id, metadata)
+            self._record_rejection(raw, transport, reason, source_ip, source_id, metadata)
             self.metrics.record_latency(start)
             return IngestResult(accepted=False, envelope=None, reason=reason)
 
         if size > self.config.max_event_size_bytes:
             reason = "oversized_event"
             self.metrics.record_rejected()
-            if self.rejected_log:
-                self.rejected_log.record(raw, transport, reason, source_ip, source_id, metadata)
+            self._record_rejection(raw, transport, reason, source_ip, source_id, metadata)
             self.metrics.record_latency(start)
             return IngestResult(accepted=False, envelope=None, reason=reason)
 
@@ -102,14 +136,30 @@ class CollectionPipeline:
         # Duplicates are still preserved as full evidence, never silently dropped.
         try:
             self.archive.store(envelope)
-        except Exception:
+        except Exception as exc:
+            self._record_rejection(
+                raw,
+                transport,
+                "archive_failed",
+                source_ip,
+                source_id,
+                {"error_type": type(exc).__name__, "failure_stage": "archive"},
+            )
             self.metrics.record_rejected()
             self.metrics.record_latency(start)
             return IngestResult(accepted=False, envelope=envelope, reason="archive_failed")
 
         try:
             self.publisher.publish(envelope)
-        except Exception:
+        except Exception as exc:
+            self._record_rejection(
+                raw,
+                transport,
+                "publish_failed",
+                source_ip,
+                source_id,
+                {"error_type": type(exc).__name__, "failure_stage": "publish"},
+            )
             self.metrics.record_rejected()
             self.metrics.record_latency(start)
             return IngestResult(accepted=False, envelope=envelope, reason="publish_failed")

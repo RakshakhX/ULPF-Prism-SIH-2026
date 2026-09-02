@@ -29,6 +29,14 @@ class ChunkSocket:
         return None
 
 
+class TimeoutSocket(ChunkSocket):
+    def recv(self, size: int) -> bytes:
+        self.recv_calls += 1
+        if self.recv_calls == 1:
+            return b"half-event"
+        raise TimeoutError("idle connection")
+
+
 def build_pipeline(tmp_path: Path, max_size: int = 16) -> CollectionPipeline:
     return CollectionPipeline(
         publisher=InMemoryPublisher(),
@@ -82,3 +90,26 @@ def test_tcp_publishes_canonical_base64_envelope(tmp_path: Path) -> None:
     assert message["raw_payload_b64"] == "/2JpbmFyeQ=="
     assert message["raw_size"] == 7
     assert "raw_event" not in message
+
+
+def test_tcp_timeout_rejects_unterminated_frame_instead_of_accepting_it(
+    tmp_path: Path,
+) -> None:
+    pipeline = build_pipeline(tmp_path)
+    collector = TCPCollector(
+        pipeline,
+        "127.0.0.1",
+        0,
+        read_timeout_seconds=0.2,
+    )
+    connection = TimeoutSocket([])
+
+    collector._handle_conn(connection, ("192.0.2.10", 5514))
+
+    assert pipeline.publisher.messages() == []
+    [rejection] = pipeline.rejected_log.list_by_reason("incomplete_frame")
+    assert rejection["raw_size"] == 10
+    assert rejection["metadata"] == {
+        "failure_stage": "tcp_framing",
+        "source_port": 5514,
+    }

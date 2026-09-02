@@ -84,3 +84,20 @@ def test_contract_is_immutable_and_rejects_unknown_fields() -> None:
 
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         RawEventEnvelope.model_validate({**event.model_dump(), "unexpected": True})
+
+
+@pytest.mark.parametrize(
+    "invalid_timestamp",
+    ["2026-09-02T10:00:00", "2026-09-02T10:00:00+05:30"],
+)
+def test_contract_rejects_non_utc_ingestion_timestamp(invalid_timestamp: str) -> None:
+    event = RawEventEnvelope.from_bytes(
+        b"event",
+        source_id="fw-1",
+        transport="udp",
+    )
+
+    with pytest.raises(ValidationError, match="ingested_at must be an aware UTC timestamp"):
+        RawEventEnvelope.model_validate(
+            {**event.model_dump(), "ingested_at": invalid_timestamp}
+        )

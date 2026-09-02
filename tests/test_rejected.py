@@ -5,11 +5,14 @@ from src.collection.rejected import RejectedEventLog
 
 def test_rejected_event_is_persisted_and_retrievable(tmp_path: Path):
     log = RejectedEventLog(tmp_path)
-    rec = log.record(raw=b"", transport="udp", reason="empty_event", source_ip="1.2.3.4")
+    rec = log.record(raw=b"event", transport="udp", reason="invalid_event", source_ip="1.2.3.4")
     fetched = log.retrieve(rec.rejection_id)
     assert fetched is not None
-    assert fetched["reason"] == "empty_event"
+    assert fetched["reason"] == "invalid_event"
     assert fetched["transport"] == "udp"
+    assert fetched["raw_sha256"] == (
+        "b8e1f80bd70ae0784c7855a451731b745fddb67749d23f637be9082b75e9575b"
+    )
 
 
 def test_oversized_sample_is_truncated_not_full_payload(tmp_path: Path):

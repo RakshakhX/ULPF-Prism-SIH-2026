@@ -5,11 +5,11 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, model_validator
+from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, field_validator, model_validator
 
 
 class RawEventEnvelope(BaseModel):
@@ -29,6 +29,13 @@ class RawEventEnvelope(BaseModel):
     collector_id: str
     collector_version: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("ingested_at")
+    @classmethod
+    def require_utc_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() != timedelta(0):
+            raise ValueError("ingested_at must be an aware UTC timestamp")
+        return value
 
     @classmethod
     def from_bytes(

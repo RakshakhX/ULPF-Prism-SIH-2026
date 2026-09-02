@@ -56,7 +56,17 @@ class TCPCollector:
                     chunk = conn.recv(min(65535, max(1, remaining)))
                 except TimeoutError:
                     if buffer:
-                        self._emit(bytes(buffer), addr, source_id)
+                        self.pipeline.reject(
+                            bytes(buffer),
+                            "tcp",
+                            "incomplete_frame",
+                            source_ip=addr[0],
+                            source_id=source_id,
+                            metadata={
+                                "failure_stage": "tcp_framing",
+                                "source_port": addr[1],
+                            },
+                        )
                     break
                 except OSError:
                     break

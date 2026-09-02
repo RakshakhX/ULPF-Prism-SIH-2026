@@ -53,6 +53,17 @@ def test_file_replay_oversized_logs_rejected(tmp_path):
     assert all(not r.accepted and r.reason == "oversized_event" for r in results)
 
 
+def test_file_replay_removes_only_lf_framing_byte(tmp_path):
+    fixture = tmp_path / "significant-carriage-return.log"
+    fixture.write_bytes(b"payload\r\n")
+    pipeline = build_pipeline(tmp_path)
+
+    [result] = FileCollector(pipeline).replay(fixture)
+
+    assert result.accepted
+    assert result.envelope.raw_bytes() == b"payload\r"
+
+
 def test_udp_collector_end_to_end(tmp_path):
     pipeline = build_pipeline(tmp_path)
     collector = UDPCollector(pipeline, "127.0.0.1", 0)

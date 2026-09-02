@@ -1,3 +1,4 @@
+import hashlib
 import json
 import threading
 import uuid
@@ -25,6 +26,7 @@ class RejectedEventRecord:
     source_id: str | None
     reason: str
     raw_size: int
+    raw_sha256: str
     raw_sample: str  # first N bytes, decoded best-effort, for evidence
     sample_truncated: bool
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -38,6 +40,7 @@ class RejectedEventRecord:
             "source_id": self.source_id,
             "reason": self.reason,
             "raw_size": self.raw_size,
+            "raw_sha256": self.raw_sha256,
             "raw_sample": self.raw_sample,
             "sample_truncated": self.sample_truncated,
             "metadata": self.metadata,
@@ -74,6 +77,7 @@ class RejectedEventLog:
             source_id=source_id,
             reason=reason,
             raw_size=len(raw),
+            raw_sha256=hashlib.sha256(raw).hexdigest(),
             raw_sample=sample_bytes.decode("utf-8", errors="replace"),
             sample_truncated=len(raw) > self.SAMPLE_BYTES,
             metadata=metadata or {},

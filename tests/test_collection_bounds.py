@@ -5,6 +5,7 @@ from src.collection.archive import RawEventArchive
 from src.collection.dedup import BoundedHashCache
 from src.collection.pipeline import CollectionPipeline, CollectorConfig
 from src.collection.publisher import InMemoryPublisher
+from src.collection.rejected import RejectedEventLog
 
 
 class RecordingArchive:
@@ -56,13 +57,43 @@ def test_archive_failure_prevents_publication() -> None:
     assert calls == ["archive"]
 
 
+def test_archive_failure_is_written_to_rejected_log(tmp_path: Path) -> None:
+    class FailingArchive:
+        def store(self, envelope) -> None:
+            raise OSError("disk unavailable")
+
+    rejected_log = RejectedEventLog(tmp_path / "rejected")
+    pipeline = CollectionPipeline(
+        publisher=InMemoryPublisher(),
+        archive=FailingArchive(),
+        rejected_log=rejected_log,
+    )
+
+    result = pipeline.ingest(b"event", "udp", source_id="fw-1")
+
+    assert result.reason == "archive_failed"
+    [record] = rejected_log.list_by_reason("archive_failed")
+    assert record["raw_sha256"] == (
+        "b8e1f80bd70ae0784c7855a451731b745fddb67749d23f637be9082b75e9575b"
+    )
+    assert record["metadata"] == {
+        "error_type": "OSError",
+        "failure_stage": "archive",
+    }
+
+
 def test_publish_failure_retains_archived_evidence(tmp_path: Path) -> None:
     class FailingPublisher:
         def publish(self, envelope) -> None:
             raise RuntimeError("broker unavailable")
 
     archive = RawEventArchive(tmp_path)
-    pipeline = CollectionPipeline(publisher=FailingPublisher(), archive=archive)
+    rejected_log = RejectedEventLog(tmp_path / "rejected")
+    pipeline = CollectionPipeline(
+        publisher=FailingPublisher(),
+        archive=archive,
+        rejected_log=rejected_log,
+    )
 
     result = pipeline.ingest(b"event", "tcp", source_id="fw-1")
 
@@ -70,6 +101,12 @@ def test_publish_failure_retains_archived_evidence(tmp_path: Path) -> None:
     assert result.reason == "publish_failed"
     assert result.envelope is not None
     assert archive.retrieve(result.envelope.event_id) is not None
+    [record] = rejected_log.list_by_reason("publish_failed")
+    assert record["raw_sha256"] == result.envelope.raw_sha256
+    assert record["metadata"] == {
+        "error_type": "RuntimeError",
+        "failure_stage": "publish",
+    }
 
 
 def test_duplicate_cache_is_bounded_and_thread_safe() -> None:

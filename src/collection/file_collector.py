@@ -4,8 +4,7 @@ from .pipeline import CollectionPipeline, IngestResult
 
 
 class FileCollector:
-    """Reads one raw event per line for testing / replay. Each line's raw
-    bytes (as written in the file) are passed through unchanged."""
+    """Replay LF-delimited events, removing exactly one LF framing byte."""
 
     def __init__(self, pipeline: CollectionPipeline, source_id: str = "file-replay") -> None:
         self.pipeline = pipeline
@@ -15,7 +14,7 @@ class FileCollector:
         results = []
         with path.open("rb") as f:
             for line in f:
-                raw = line.rstrip(b"\n").rstrip(b"\r")
+                raw = line[:-1] if line.endswith(b"\n") else line
                 results.append(
                     self.pipeline.ingest(raw=raw, transport="file", source_id=self.source_id)
                 )
