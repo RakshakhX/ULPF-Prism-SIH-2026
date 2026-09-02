@@ -37,17 +37,29 @@ class FortinetFortigateMapping:
             transport = None
 
         missing: list[str] = []
-        if not source or "ip" not in source:
-            missing.append("source.ip")
-        if not destination or "ip" not in destination:
-            missing.append("destination.ip")
-        if transport is None:
-            missing.append("network.transport")
-        is_network = not missing and fields.get("event_type") in {"traffic", "utm"}
+        event_family = str(fields.get("event_type") or "").lower()
+        is_network_family = event_family in {"traffic", "utm"}
+        if is_network_family:
+            if not source or "ip" not in source:
+                missing.append("source.ip")
+            if not destination or "ip" not in destination:
+                missing.append("destination.ip")
+            if transport is None:
+                missing.append("network.transport")
+        is_network = is_network_family and not missing
 
         original_action = str(fields.get("action") or fields.get("status") or "unknown")
         action_text = original_action.lower()
-        if action_text in {"deny", "denied", "block", "blocked"}:
+        is_authentication = (
+            action_text == "login"
+            and isinstance(fields.get("user"), str)
+            and bool(fields["user"])
+        )
+        if is_authentication:
+            normalized_action = "authenticate"
+            status = str(fields.get("status") or "unknown").lower()
+            outcome = status if status in {"success", "failure"} else "unknown"
+        elif action_text in {"deny", "denied", "block", "blocked"}:
             normalized_action, outcome = "block", "failure"
         elif action_text in {"accept", "allow", "allowed", "pass"}:
             normalized_action, outcome = "allow", "success"
@@ -70,17 +82,35 @@ class FortinetFortigateMapping:
             observer["hostname"] = hostname
 
         subtype = fields.get("event_subtype")
+        if is_authentication:
+            category = "authentication"
+        elif is_network:
+            category = "network"
+        elif is_network_family:
+            category = "unknown"
+        else:
+            category = "system"
+
+        event_section = {
+            "category": category,
+            "type": event_type(subtype or fields.get("event_type"), "fortigate_event"),
+            "name": "FortiGate security event",
+        }
+        message = fields.get("message") or fields.get("log_description")
+        if isinstance(message, str) and message:
+            event_section["message"] = message
+        else:
+            missing.append("event.message")
+
+        authentication = None
+        if is_authentication:
+            authentication = {
+                "user": fields["user"],
+                "result": outcome,
+            }
+
         return MappingResult(
-            event={
-                "category": "network" if is_network else "unknown",
-                "type": event_type(subtype or fields.get("event_type"), "fortigate_event"),
-                "name": "FortiGate security event",
-                "message": str(
-                    fields.get("message")
-                    or fields.get("log_description")
-                    or "FortiGate event"
-                ),
-            },
+            event=event_section,
             observer=observer,
             action={
                 "original": original_action,
@@ -91,6 +121,7 @@ class FortinetFortigateMapping:
             source=source,
             destination=destination,
             network={"transport": transport, "direction": "unknown"} if is_network else None,
+            authentication=authentication,
             consumed_fields=frozenset(
                 {
                     "event_type",

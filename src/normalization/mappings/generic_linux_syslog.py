@@ -20,16 +20,24 @@ class GenericLinuxSyslogMapping:
         if isinstance(hostname, str) and hostname:
             observer["hostname"] = hostname
 
+        event_section = {
+            "category": "system",
+            "type": event_type(process, "system_log"),
+            "name": f"Linux Syslog{f' ({process})' if process else ''}",
+        }
+        missing: list[str] = []
+        message = fields.get("message")
+        if isinstance(message, str) and message:
+            event_section["message"] = message
+        else:
+            missing.append("event.message")
+
         return MappingResult(
-            event={
-                "category": "system",
-                "type": event_type(process, "system_log"),
-                "name": f"Linux Syslog{f' ({process})' if process else ''}",
-                "message": str(fields.get("message") or "Linux system event"),
-            },
+            event=event_section,
             observer=observer,
             action={"original": "unknown", "normalized": "unknown", "outcome": "unknown"},
             severity=severity,
             consumed_fields=frozenset({"hostname", "process", "message", "severity"}),
+            missing_fields=tuple(missing),
             warnings=warnings,
         )

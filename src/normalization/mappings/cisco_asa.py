@@ -55,13 +55,19 @@ class CiscoASAMapping:
         if isinstance(hostname, str) and hostname:
             observer["hostname"] = hostname
 
+        event_section = {
+            "category": "network" if is_network else "unknown",
+            "type": event_type(fields.get("event_type"), "firewall_event"),
+            "name": "Cisco ASA firewall event",
+        }
+        message = fields.get("message_text")
+        if isinstance(message, str) and message:
+            event_section["message"] = message
+        else:
+            missing.append("event.message")
+
         return MappingResult(
-            event={
-                "category": "network" if is_network else "unknown",
-                "type": event_type(fields.get("event_type"), "firewall_event"),
-                "name": "Cisco ASA firewall event",
-                "message": str(fields.get("message_text") or "Cisco ASA event"),
-            },
+            event=event_section,
             observer=observer,
             action={
                 "original": action_original,

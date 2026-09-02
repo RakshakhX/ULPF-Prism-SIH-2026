@@ -90,10 +90,11 @@ class UniversalNormalizer:
         }
         observer = {"vendor": vendor, "product": product, **mapped.observer}
         pack_namespace = _namespace(parsed.source_pack_id)
-        unmapped = {
-            key: _json_value(value)
-            for key, value in parsed.extracted_fields.items()
-            if key not in mapped.consumed_fields
+        # Keep the complete extracted namespace. Canonical fields may coerce
+        # values (for example, port text to an integer), and rejected values
+        # must remain available for forensics instead of disappearing.
+        source_fields = {
+            key: _json_value(value) for key, value in parsed.extracted_fields.items()
         }
         mapping_name = mapping.source_pack_id if mapping is not None else "unknown"
         mapping_version = mapping.version if mapping is not None else "0.0.0"
@@ -126,13 +127,27 @@ class UniversalNormalizer:
                 "warnings": list(dict.fromkeys(warnings)),
             },
             "extensions": {
-                pack_namespace: unmapped,
+                pack_namespace: source_fields,
                 "ulpf": {
                     "mapping": {"name": mapping_name, "version": mapping_version},
                     "normalizer": {"name": "universal_normalizer", "version": NORMALIZER_VERSION},
+                    "received_versions": {
+                        "source_pack": parsed.source_pack_version,
+                        "parser": parsed.parser_version,
+                    },
                 },
             },
         }
+        try:
+            raw_text = parsed.raw_event.raw_bytes().decode("utf-8")
+        except UnicodeDecodeError:
+            raw_text = None
+        if raw_text is not None:
+            unified["traceability"]["raw_event"] = {
+                "encoding": "utf-8",
+                "content_type": "text/plain",
+                "content": raw_text,
+            }
         for section in (
             "source",
             "destination",
