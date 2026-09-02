@@ -16,11 +16,13 @@ class TCPCollector:
         port: int,
         resolve_source_id_flag: bool = False,
         dns_timeout: float = 0.3,
+        read_timeout_seconds: float = 5.0,
     ) -> None:
         self.pipeline = pipeline
         self.host, self.port = host, port
         self.resolve_source_id_flag = resolve_source_id_flag
         self.dns_timeout = dns_timeout
+        self.read_timeout_seconds = read_timeout_seconds
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._running = False
@@ -45,21 +47,34 @@ class TCPCollector:
         source_id = (
             resolve_source_id(addr[0], self.dns_timeout) if self.resolve_source_id_flag else None
         )
-        buffer = b""
+        buffer = bytearray()
+        conn.settimeout(self.read_timeout_seconds)
         with conn:
             while True:
                 try:
-                    chunk = conn.recv(65535)
+                    remaining = self.pipeline.config.max_event_size_bytes + 1 - len(buffer)
+                    chunk = conn.recv(min(65535, max(1, remaining)))
+                except TimeoutError:
+                    if buffer:
+                        self._emit(bytes(buffer), addr, source_id)
+                    break
                 except OSError:
                     break
                 if not chunk:
                     if buffer:
-                        self._emit(buffer, addr, source_id)
+                        self._emit(bytes(buffer), addr, source_id)
                     break
-                buffer += chunk
+                buffer.extend(chunk)
                 while DELIMITER in buffer:
-                    line, buffer = buffer.split(DELIMITER, 1)
+                    delimiter_index = buffer.index(DELIMITER)
+                    line = bytes(buffer[:delimiter_index])
+                    del buffer[: delimiter_index + len(DELIMITER)]
                     self._emit(line, addr, source_id)
+                    if len(line) > self.pipeline.config.max_event_size_bytes:
+                        return
+                if len(buffer) > self.pipeline.config.max_event_size_bytes:
+                    self._emit(bytes(buffer), addr, source_id)
+                    return
 
     def _emit(self, raw: bytes, addr, source_id: str | None) -> None:
         self.pipeline.ingest(

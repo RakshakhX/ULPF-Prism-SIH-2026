@@ -12,6 +12,7 @@ class AppConfig:
     max_event_size_bytes: int = 65536
     dedup_max_entries: int = 10000
     latency_window_size: int = 128
+    tcp_read_timeout_seconds: float = 5.0
     archive_dir: str = "archive_store"
     stream_file: str = "raw_event_stream.ndjson"
     resolve_source_id: bool = False  # off by default: reverse DNS adds latency

@@ -36,7 +36,12 @@ def main() -> None:
         pipeline, cfg.udp_host, cfg.udp_port, cfg.resolve_source_id, cfg.reverse_dns_timeout
     )
     tcp = TCPCollector(
-        pipeline, cfg.tcp_host, cfg.tcp_port, cfg.resolve_source_id, cfg.reverse_dns_timeout
+        pipeline,
+        cfg.tcp_host,
+        cfg.tcp_port,
+        cfg.resolve_source_id,
+        cfg.reverse_dns_timeout,
+        cfg.tcp_read_timeout_seconds,
     )
     udp.start()
     tcp.start()

@@ -3,7 +3,10 @@
   "udp_port": 5514,
   "tcp_host": "0.0.0.0",
   "tcp_port": 5601,
+  "tcp_read_timeout_seconds": 5.0,
   "max_event_size_bytes": 65536,
+  "dedup_max_entries": 10000,
+  "latency_window_size": 128,
   "archive_dir": "archive_store",
   "stream_file": "raw_event_stream.ndjson"
 }
