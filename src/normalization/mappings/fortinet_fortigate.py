@@ -58,6 +58,8 @@ class FortinetFortigateMapping:
         if is_authentication:
             normalized_action = "authenticate"
             status = str(fields.get("status") or "unknown").lower()
+            if status == "failed":
+                status = "failure"
             outcome = status if status in {"success", "failure"} else "unknown"
         elif action_text in {"deny", "denied", "block", "blocked"}:
             normalized_action, outcome = "block", "failure"

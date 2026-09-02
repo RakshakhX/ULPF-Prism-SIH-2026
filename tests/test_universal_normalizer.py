@@ -3,9 +3,11 @@ from pathlib import Path
 
 import pytest
 
+from core.cisco_asa_pack import CiscoASASourcePack
 from core.engine import ParsingEngine
 from src.contracts import ParsedEvent, ParseStatus, RawEventEnvelope
 from src.normalization import UniversalNormalizer, default_registry
+from src.pipeline.normalizer import normalize_cisco_asa_event
 from src.validation.validate_unified_event import validate_event
 
 
@@ -202,6 +204,27 @@ def test_fortinet_non_network_families_have_relevant_requirements_only(
     assert validate_event(unified).valid
 
 
+def test_fortinet_failed_login_normalizes_failed_to_failure() -> None:
+    parsed = parsed_event_for(
+        "fortinet_fortigate",
+        {
+            "event_type": "event",
+            "event_subtype": "system",
+            "action": "login",
+            "status": "failed",
+            "user": "admin",
+            "level": "warning",
+            "message": "Administrator login failed",
+        },
+    )
+
+    unified = UniversalNormalizer(default_registry()).normalize(parsed)
+
+    assert unified["action"]["outcome"] == "failure"
+    assert unified["authentication"]["result"] == "failure"
+    assert validate_event(unified).valid
+
+
 @pytest.mark.parametrize("pack_id", ["cisco_asa", "fortinet_fortigate", "generic_linux_syslog"])
 def test_absent_optional_message_is_omitted_not_fabricated(pack_id: str) -> None:
     base_fields = {
@@ -281,4 +304,20 @@ def test_real_parser_output_normalizes_across_required_packs(
     assert parsed.source_pack_id == pack_id
     assert unified["event"]["category"] == category
     assert unified["traceability"]["raw_sha256"] == raw.raw_sha256
+    assert validate_event(unified).valid
+
+
+def test_legacy_cisco_adapter_preserves_valid_uuid_and_known_parser_identity() -> None:
+    raw = (
+        b"<166>Oct 12 2023 14:23:01 asa-fw1 : %ASA-4-106023: "
+        b"Deny tcp src outside:203.0.113.5/54321 dst inside:10.0.0.5/443 "
+        b'by access-group "OUTSIDE_IN"'
+    )
+    parsed = CiscoASASourcePack().parse(raw)
+
+    unified = normalize_cisco_asa_event(parsed)
+
+    assert unified["event"]["id"] == parsed.event_id
+    assert unified["traceability"]["raw_event_id"] == parsed.event_id
+    assert unified["traceability"]["parser"]["name"] == "cisco.asa.syslog"
     assert validate_event(unified).valid
