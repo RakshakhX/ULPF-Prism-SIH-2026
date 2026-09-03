@@ -1,0 +1,29 @@
+implementation: "source_packs.suricata.pack:SuricataEveSourcePack"
+
+pack:
+  id: "suricata_eve"
+  vendor: "OISF"
+  product: "Suricata"
+  pack_version: "1.0.0"
+  description: >
+    Parses Suricata Extensible Event Format JSON for alerts, flows,
+    DNS transactions and HTTP transactions while retaining the full object.
+
+detection:
+  priority: 90
+  rules:
+    - type: regex
+      target: raw_payload
+      pattern: '"event_type"\s*:\s*"(alert|flow|dns|http)"'
+    - type: keyword
+      target: raw_payload
+      any_of: ['"flow_id"', '"suricata_version"']
+
+format:
+  type: json
+
+fields: []
+
+samples:
+  valid: "samples/valid.jsonl"
+  invalid: "samples/invalid.jsonl"

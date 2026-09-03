@@ -65,12 +65,16 @@ def _load_local_class(
         ) from exc
 
 
-def _validate_runtime_pack(pack: object, manifest_path: Path) -> SourcePackProtocol:
+def _validate_runtime_pack(
+    pack: object,
+    manifest_path: Path,
+    expected_pack_id: str,
+) -> SourcePackProtocol:
     pack_id = getattr(pack, "pack_id", None)
     priority = getattr(pack, "priority", None)
-    if not isinstance(pack_id, str) or not pack_id or pack_id != manifest_path.parent.name:
+    if not isinstance(pack_id, str) or not pack_id or pack_id != expected_pack_id:
         raise SourcePackValidationError(
-            "Source Pack implementation pack_id must match its directory name"
+            "Source Pack implementation pack_id must match pack.id or its directory name"
         )
     if isinstance(priority, bool) or not isinstance(priority, Real):
         raise SourcePackValidationError("Source Pack priority must be numeric")
@@ -90,8 +94,13 @@ def load_source_pack(manifest_path: Path) -> SourcePackProtocol:
     manifest = validate_manifest(manifest)
 
     implementation = manifest.get("implementation")
+    expected_pack_id = manifest["pack"].get("id", manifest_path.parent.name)
+    if not isinstance(expected_pack_id, str) or not expected_pack_id:
+        raise SourcePackValidationError("Manifest pack.id must be a non-empty string")
     if not implementation:
-        return _validate_runtime_pack(SourcePackBase(manifest_path), manifest_path)
+        return _validate_runtime_pack(
+            SourcePackBase(manifest_path), manifest_path, expected_pack_id
+        )
     if not isinstance(implementation, str):
         raise SourcePackValidationError("implementation must be a module:class string")
 
@@ -108,4 +117,4 @@ def load_source_pack(manifest_path: Path) -> SourcePackProtocol:
         raise SourcePackValidationError(
             f"cannot load Source Pack implementation {implementation}"
         ) from exc
-    return _validate_runtime_pack(pack, manifest_path)
+    return _validate_runtime_pack(pack, manifest_path, expected_pack_id)

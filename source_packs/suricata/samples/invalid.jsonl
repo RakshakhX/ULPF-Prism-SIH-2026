@@ -1,0 +1,5 @@
+{"timestamp":"2026-08-30T11:00:00.000001+0000","flow_id":3001,"event_type":"alert","src_ip":"192.0.2.50"
+{"timestamp":"2026-08-30T11:00:01.000001+0000","flow_id":3002,"src_ip":"192.0.2.51","dest_ip":"198.51.100.51","proto":"TCP","flow":{"state":"closed"}}
+{"timestamp":"2026-08-30T11:00:02.000001+0000","flow_id":3003,"event_type":"flow","src_ip":"not-an-ip","dest_ip":"198.51.100.52","proto":"TCP","flow":{"state":"closed"}}
+{"timestamp":"2026-08-30T11:00:03.000001+0000","flow_id":3004,"event_type":"dns","src_ip":"192.0.2.53","src_port":53003,"dest_ip":"198.51.100.53","dest_port":70000,"proto":"UDP","dns":{"type":"query","rrname":"invalid.example","rrtype":"A"}}
+{"flow_id":3005,"event_type":"http","src_ip":"192.0.2.54","src_port":55004,"dest_ip":"198.51.100.54","dest_port":80,"proto":"TCP","http":{"hostname":"missing-time.example","url":"/","http_method":"GET","status":200}}

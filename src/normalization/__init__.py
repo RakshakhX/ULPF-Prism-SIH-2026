@@ -4,6 +4,7 @@ from src.normalization.mappings import (
     CiscoASAMapping,
     FortinetFortigateMapping,
     GenericLinuxSyslogMapping,
+    SuricataEveMapping,
 )
 from src.normalization.normalizer import UniversalNormalizer
 from src.normalization.registry import NormalizationRegistry
@@ -14,6 +15,7 @@ def default_registry() -> NormalizationRegistry:
     registry.register(CiscoASAMapping())
     registry.register(FortinetFortigateMapping())
     registry.register(GenericLinuxSyslogMapping())
+    registry.register(SuricataEveMapping())
     return registry
 
 

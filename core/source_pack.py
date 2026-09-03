@@ -136,7 +136,7 @@ class SourcePackBase:
         self._validate_manifest(self.manifest)
 
         pack_meta = self.manifest["pack"]
-        self.pack_id: str = manifest_path.parent.name
+        self.pack_id: str = pack_meta.get("id", manifest_path.parent.name)
         self.vendor: str = pack_meta["vendor"]
         self.product: str = pack_meta["product"]
         self.pack_version: str = pack_meta["pack_version"]
