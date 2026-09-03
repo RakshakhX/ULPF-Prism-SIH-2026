@@ -87,4 +87,3 @@ def test_compose_runs_pinned_secured_grafana_with_read_only_provisioning() -> No
     assert "./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro" in grafana["volumes"]
     assert "grafana-data:/var/lib/grafana" in grafana["volumes"]
     assert "grafana-data" in compose["volumes"]
-

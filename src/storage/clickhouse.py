@@ -82,10 +82,15 @@ def _values(record: EventRow | QuarantineRow) -> list[Any]:
     return values
 
 
+def _object_section(event: dict[str, Any], name: str) -> dict[str, Any]:
+    section = event.get(name)
+    return section if isinstance(section, dict) else {}
+
+
 def _quarantine(event: dict[str, Any], errors: tuple[str, ...]) -> QuarantineRow:
-    trace = event.get("traceability", {})
+    trace = _object_section(event, "traceability")
     return QuarantineRow(
-        event_id=str(event.get("event", {}).get("id", "")),
+        event_id=str(_object_section(event, "event").get("id", "")),
         raw_sha256=str(trace.get("raw_sha256", "")),
         payload_json=_compact_json(event),
         error_codes=errors,
@@ -104,7 +109,7 @@ class ClickHouseEventStore:
         quarantine_rows: list[QuarantineRow] = []
         for event in events:
             validation = validate_event(event)
-            quality_status = event.get("quality", {}).get("status")
+            quality_status = _object_section(event, "quality").get("status")
             if validation.valid and quality_status != "invalid":
                 valid_rows.append(map_unified_event(event))
                 continue
@@ -258,12 +263,10 @@ class ClickHouseEventStore:
             "GROUP BY vendor, product ORDER BY count() DESC"
         ).result_rows
         severity_result = self.client.query(
-            f"SELECT severity_label, count() FROM {EVENTS_TABLE} FINAL "
-            "GROUP BY severity_label"
+            f"SELECT severity_label, count() FROM {EVENTS_TABLE} FINAL GROUP BY severity_label"
         ).result_rows
         quality_result = self.client.query(
-            f"SELECT quality_status, count() FROM {EVENTS_TABLE} FINAL "
-            "GROUP BY quality_status"
+            f"SELECT quality_status, count() FROM {EVENTS_TABLE} FINAL GROUP BY quality_status"
         ).result_rows
 
         decisions = int(allow_count) + int(deny_count)
@@ -283,8 +286,7 @@ class ClickHouseEventStore:
         return {
             "total_events": int(total),
             "events_by_source": {
-                f"{vendor} {product}": int(count)
-                for vendor, product, count in sources_result
+                f"{vendor} {product}": int(count) for vendor, product, count in sources_result
             },
             "allow_vs_deny": {
                 "allow_count": int(allow_count),

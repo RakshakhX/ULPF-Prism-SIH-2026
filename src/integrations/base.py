@@ -19,8 +19,7 @@ class DeliveryResult:
         return (
             self.attempted >= 0
             and min(self.delivered, self.retryable_failures, self.terminal_failures) >= 0
-            and self.delivered + self.retryable_failures + self.terminal_failures
-            == self.attempted
+            and self.delivered + self.retryable_failures + self.terminal_failures == self.attempted
         )
 
 

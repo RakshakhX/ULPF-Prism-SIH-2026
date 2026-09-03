@@ -85,4 +85,3 @@ def test_opensearch_compose_profile_is_optional_and_pinned() -> None:
     assert service["profiles"] == ["siem-search"]
     assert "opensearch-data:/usr/share/opensearch/data" in service["volumes"]
     assert "opensearch-data" in compose["volumes"]
-

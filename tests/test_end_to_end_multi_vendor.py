@@ -179,12 +179,17 @@ def test_universal_api_rejects_ambiguous_or_invalid_input(
     assert response.status_code == 422
 
 
-def test_application_import_does_not_insert_demo_events() -> None:
+def test_application_import_does_not_insert_demo_events(monkeypatch: pytest.MonkeyPatch) -> None:
     import main
     from src.pipeline.storage import global_visibility_store
 
-    global_visibility_store.clear()
-    importlib.reload(main)
+    try:
+        with monkeypatch.context() as isolated:
+            isolated.delenv("ULPF_CLICKHOUSE_URL", raising=False)
+            global_visibility_store.clear()
+            importlib.reload(main)
 
-    assert global_visibility_store.event_count == 0
-    assert main.healthz()["indexed_events"] == 0
+            assert global_visibility_store.event_count == 0
+            assert main.healthz()["indexed_events"] == 0
+    finally:
+        importlib.reload(main)

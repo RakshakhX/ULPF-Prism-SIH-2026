@@ -48,4 +48,3 @@ def test_syslog_contains_schema_event_identity_pack_and_quality() -> None:
     assert f' rawSha256="{value["traceability"]["raw_sha256"]}"'.encode() in payload
     assert b' sourcePack="' in payload
     assert b' quality="valid"' in payload
-

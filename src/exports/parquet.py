@@ -40,9 +40,7 @@ class ParquetExporter:
 
     def export(self, events: list[dict[str, Any]]) -> ExportManifest:
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        partitions: dict[tuple[bool, str, str, str, str], list[dict[str, Any]]] = defaultdict(
-            list
-        )
+        partitions: dict[tuple[bool, str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
         for event in events:
             quarantine = not _is_valid(event)
             year, month, day = _date_partition(event)

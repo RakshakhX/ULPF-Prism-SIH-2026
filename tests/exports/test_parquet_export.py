@@ -34,9 +34,7 @@ def test_parquet_partition_manifest_and_readback(tmp_path: Path) -> None:
     valid_file = next(item for item in manifest.files if not item.quarantine)
     quarantine_file = next(item for item in manifest.files if item.quarantine)
     assert valid_file.path.startswith("year=2026/month=08/day=30/category=network/")
-    assert quarantine_file.path.startswith(
-        "quarantine/year=2026/month=08/day=30/category=network/"
-    )
+    assert quarantine_file.path.startswith("quarantine/year=2026/month=08/day=30/category=network/")
     assert valid_file.format == "parquet"
     assert valid_file.schema_version == "1.0.0"
 

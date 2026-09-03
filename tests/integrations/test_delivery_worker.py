@@ -73,4 +73,3 @@ def test_worker_fails_closed_when_adapter_counts_do_not_reconcile() -> None:
     assert decision.retryable is False
     assert decision.dead_letter is True
     assert decision.error_code == "DELIVERY_ACCOUNTING_INVALID"
-

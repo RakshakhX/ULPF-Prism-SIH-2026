@@ -165,4 +165,3 @@ def test_unrelated_json_is_not_claimed_by_suricata_pack() -> None:
     parsed = ParsingEngine(Path("source_packs")).process(envelope)
 
     assert parsed.source_pack_id != "suricata_eve"
-

@@ -99,11 +99,7 @@ class AnalyticalVisibilityStore:
                 continue
 
             ev_category = event.get("event", {}).get("category", "").lower()
-            if (
-                category
-                and category.lower() != "all"
-                and category.lower() != ev_category
-            ):
+            if category and category.lower() != "all" and category.lower() != ev_category:
                 continue
 
             # Action filter
@@ -112,9 +108,7 @@ class AnalyticalVisibilityStore:
                 continue
 
             observed_value = event.get("time", {}).get("observed_at")
-            if (start_time is not None or end_time is not None) and isinstance(
-                observed_value, str
-            ):
+            if (start_time is not None or end_time is not None) and isinstance(observed_value, str):
                 observed_at = datetime.fromisoformat(observed_value.replace("Z", "+00:00"))
                 if start_time is not None and observed_at < start_time:
                     continue
