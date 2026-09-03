@@ -1,11 +1,14 @@
 {
   "index_patterns": ["ulpf-events-v1-*"],
+  "priority": 100,
+  "_meta": {
+    "schema_version": "1.0.0",
+    "description": "ULPF UnifiedEvent integration target; OpenSearch is not a complete SIEM"
+  },
   "template": {
     "settings": {
       "number_of_shards": 3,
-      "number_of_replicas": 1,
-      "index.lifecycle.name": "ulpf-hot-warm-cold-policy",
-      "index.lifecycle.rollover_alias": "ulpf-events-v1",
+      "number_of_replicas": 0,
       "index.mapping.total_fields.limit": 2000,
       "analysis": {
         "analyzer": {

@@ -76,6 +76,45 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  opensearch:
+    image: opensearchproject/opensearch:3.8.0
+    container_name: ulpf-opensearch
+    profiles: ["siem-search"]
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+    restart: unless-stopped
+
+  opensearch-init:
+    image: curlimages/curl:8.14.1
+    profiles: ["siem-search"]
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    volumes:
+      - ./schemas/opensearch-index-template-v1.json:/template.json:ro
+    command:
+      - -fsS
+      - -X
+      - PUT
+      - http://opensearch:9200/_index_template/ulpf-events-v1
+      - -H
+      - Content-Type:application/json
+      - --data-binary
+      - "@/template.json"
+
 volumes:
   clickhouse-data:
   grafana-data:
+  opensearch-data:
