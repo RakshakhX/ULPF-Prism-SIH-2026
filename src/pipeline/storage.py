@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.storage.models import WriteResult
+from src.validation.validate_unified_event import validate_event
+
 
 class AnalyticalVisibilityStore:
     """Analytical event store designed for visibility dashboards and fast forensic search."""
@@ -36,6 +39,32 @@ class AnalyticalVisibilityStore:
     def get_by_id(self, event_id: str) -> dict[str, Any] | None:
         """Lookup by event ID."""
         return self._by_id.get(event_id)
+
+    def get_by_event_id(self, event_id: str) -> dict[str, Any] | None:
+        """Shared analytical-store lookup name."""
+
+        return self.get_by_id(event_id)
+
+    def write_batch(self, events: list[dict[str, Any]]) -> WriteResult:
+        """Implement the persistent sink contract for tests and local demos."""
+
+        valid_count = 0
+        failed_count = 0
+        for event in events:
+            if (
+                not validate_event(event).valid
+                or event.get("quality", {}).get("status") == "invalid"
+            ):
+                failed_count += 1
+                continue
+            self.add_event(event)
+            valid_count += 1
+        return WriteResult(
+            accepted_count=valid_count,
+            valid_count=valid_count,
+            quarantine_count=0,
+            failed_count=failed_count,
+        )
 
     def get_by_raw_hash(self, raw_sha256: str) -> dict[str, Any] | None:
         """Cryptographic lookup by raw SHA-256 hash."""
