@@ -1,0 +1,30 @@
+{
+  "id": null,
+  "uid": "ulpf-overview",
+  "title": "ULPF Prism — Unified Overview",
+  "description": "Cross-vendor perimeter-event health, security decisions and normalization quality.",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "10s",
+  "tags": ["ulpf", "security", "cross-vendor"],
+  "timezone": "utc",
+  "time": {"from": "now-1h", "to": "now"},
+  "templating": {
+    "list": [
+      {"name":"vendor","label":"Vendor","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT vendor FROM ulpf.events_v1 ORDER BY vendor","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"product","label":"Product","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT product FROM ulpf.events_v1 WHERE match(vendor, '${vendor:regex}') ORDER BY product","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"category","label":"Category","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT category FROM ulpf.events_v1 ORDER BY category","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"action","label":"Action","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT action FROM ulpf.events_v1 ORDER BY action","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"severity","label":"Severity","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT severity_label FROM ulpf.events_v1 ORDER BY severity_label","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"quality","label":"Quality","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT quality_status FROM ulpf.events_v1 ORDER BY quality_status","includeAll":true,"allValue":".*","multi":true,"current":{}}
+    ]
+  },
+  "panels": [
+    {"id":1,"title":"Total events","type":"stat","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"gridPos":{"h":5,"w":4,"x":0,"y":0},"targets":[{"refId":"A","format":1,"rawSql":"SELECT uniqExact(event_id) AS value FROM ulpf.events_v1 FINAL WHERE $__timeFilter(observed_at) AND match(vendor, '${vendor:regex}') AND match(product, '${product:regex}') AND match(category, '${category:regex}') AND match(action, '${action:regex}') AND match(severity_label, '${severity:regex}') AND match(quality_status, '${quality:regex}')"}]},
+    {"id":2,"title":"Parse failures","type":"stat","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"gridPos":{"h":5,"w":4,"x":4,"y":0},"targets":[{"refId":"A","format":1,"rawSql":"SELECT count() AS value FROM ulpf.quarantine_v1 WHERE $__timeFilter(quarantined_at)"}]},
+    {"id":3,"title":"Dead letters","type":"stat","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"gridPos":{"h":5,"w":4,"x":8,"y":0},"targets":[{"refId":"A","format":1,"rawSql":"SELECT countIf(has(error_codes, 'STORAGE_WRITE_FAILED')) AS value FROM ulpf.quarantine_v1 WHERE $__timeFilter(quarantined_at)"}]},
+    {"id":4,"title":"Events over time","type":"timeseries","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"gridPos":{"h":8,"w":12,"x":0,"y":5},"targets":[{"refId":"A","format":0,"rawSql":"SELECT toStartOfMinute(observed_at) AS time, count() AS events FROM ulpf.events_v1 FINAL WHERE $__timeFilter(observed_at) AND match(vendor, '${vendor:regex}') AND match(product, '${product:regex}') AND match(category, '${category:regex}') GROUP BY time ORDER BY time"}]},
+    {"id":5,"title":"Allow vs deny","type":"barchart","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"gridPos":{"h":8,"w":6,"x":0,"y":13},"targets":[{"refId":"A","format":1,"rawSql":"SELECT action, count() AS events FROM ulpf.events_v1 FINAL WHERE $__timeFilter(observed_at) AND action IN ('allow','deny','block') AND match(vendor, '${vendor:regex}') GROUP BY action ORDER BY events DESC"}]},
+    {"id":6,"title":"Severity","type":"piechart","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"gridPos":{"h":8,"w":6,"x":6,"y":13},"targets":[{"refId":"A","format":1,"rawSql":"SELECT severity_label, count() AS events FROM ulpf.events_v1 FINAL WHERE $__timeFilter(observed_at) AND match(severity_label, '${severity:regex}') GROUP BY severity_label ORDER BY events DESC"}]}
+  ]
+}

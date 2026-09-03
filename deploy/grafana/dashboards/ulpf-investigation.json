@@ -1,0 +1,26 @@
+{
+  "id": null,
+  "uid": "ulpf-investigation",
+  "title": "ULPF Prism — Event Investigation",
+  "description": "Event-to-evidence investigation with parser and Source Pack provenance.",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["ulpf", "forensics", "provenance"],
+  "timezone": "utc",
+  "time": {"from": "now-1h", "to": "now"},
+  "templating": {
+    "list": [
+      {"name":"vendor","label":"Vendor","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT vendor FROM ulpf.events_v1 ORDER BY vendor","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"product","label":"Product","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT product FROM ulpf.events_v1 ORDER BY product","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"category","label":"Category","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT category FROM ulpf.events_v1 ORDER BY category","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"action","label":"Action","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT action FROM ulpf.events_v1 ORDER BY action","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"severity","label":"Severity","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT severity_label FROM ulpf.events_v1 ORDER BY severity_label","includeAll":true,"allValue":".*","multi":true,"current":{}},
+      {"name":"quality","label":"Quality","type":"query","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"query":"SELECT DISTINCT quality_status FROM ulpf.events_v1 ORDER BY quality_status","includeAll":true,"allValue":".*","multi":true,"current":{}}
+    ]
+  },
+  "panels": [
+    {"id":1,"title":"Investigation event stream","type":"table","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"gridPos":{"h":12,"w":12,"x":0,"y":0},"targets":[{"refId":"A","format":1,"rawSql":"SELECT observed_at, event_id, vendor, product, category, action, severity_label, source_ip, source_port, destination_ip, destination_port, quality_status, source_pack_name, source_pack_version, parser_name, parser_version, raw_sha256 FROM ulpf.events_v1 FINAL WHERE $__timeFilter(observed_at) AND match(vendor, '${vendor:regex}') AND match(product, '${product:regex}') AND match(category, '${category:regex}') AND match(action, '${action:regex}') AND match(severity_label, '${severity:regex}') AND match(quality_status, '${quality:regex}') ORDER BY observed_at DESC LIMIT 500"}]},
+    {"id":2,"title":"Raw SHA-256","type":"table","datasource":{"type":"grafana-clickhouse-datasource","uid":"ulpf-clickhouse"},"gridPos":{"h":9,"w":12,"x":0,"y":12},"targets":[{"refId":"A","format":1,"rawSql":"SELECT event_id, raw_event_id, raw_sha256, source_pack_name, source_pack_version, parser_name, parser_version, normalized_json FROM ulpf.events_v1 FINAL WHERE $__timeFilter(observed_at) AND match(vendor, '${vendor:regex}') ORDER BY observed_at DESC LIMIT 100"}]}
+  ]
+}

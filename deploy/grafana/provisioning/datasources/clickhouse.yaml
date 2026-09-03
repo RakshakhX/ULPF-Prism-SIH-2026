@@ -1,0 +1,21 @@
+apiVersion: 1
+
+datasources:
+  - name: ULPF ClickHouse
+    uid: ulpf-clickhouse
+    type: grafana-clickhouse-datasource
+    access: proxy
+    isDefault: true
+    editable: false
+    jsonData:
+      host: clickhouse
+      port: 8123
+      protocol: http
+      username: ulpf
+      defaultDatabase: ulpf
+      defaultTable: events_v1
+      dialTimeout: "10"
+      queryTimeout: "30"
+      validateSql: true
+    secureJsonData:
+      password: $ULPF_CLICKHOUSE_PASSWORD

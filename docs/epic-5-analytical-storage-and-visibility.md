@@ -2,19 +2,28 @@
 
 ## Scope and Objectives
 
-Epic 5 defines how validated `UnifiedEvent` (v1.0.0) records are indexed, queried, and visualized across heterogeneous perimeter and security devices (such as Cisco ASA firewalls, pfSense appliances, Suricata IDSs, and Juniper routers).
+Epic 5 implements how validated `UnifiedEvent` (v1.0.0) records are indexed, queried, and visualized across heterogeneous perimeter and security devices. The current executable path includes Cisco ASA, Fortinet FortiGate, generic Linux Syslog and Suricata EVE JSON.
 
-This document establishes the architecture, indexing specifications, dashboard layout, filtering query engine semantics, and validation fixtures for ULPF Prism's visibility layer.
+The deployed visibility stack is ClickHouse plus Grafana. ClickHouse keeps the complete normalized JSON alongside projected analytical columns; Grafana's datasource and dashboards are provisioned from repository files. The older OpenSearch template remains an optional integration artifact, not the primary Epic 5 store.
+
+### Implemented assets
+
+- `deploy/clickhouse/init/001_events.sql`: valid-event and quarantine tables.
+- `src/storage/clickhouse.py`: batch writes, bound-parameter search, trace lookup and aggregations.
+- `deploy/grafana/provisioning/`: immutable datasource and dashboard-provider configuration.
+- `deploy/grafana/dashboards/ulpf-overview.json`: security and pipeline-health overview.
+- `deploy/grafana/dashboards/ulpf-investigation.json`: event, parser, Source Pack and raw-hash drill-down.
+- `source_packs/suricata/samples/`: 20 valid and 5 invalid fictional EVE records.
 
 ---
 
 ## 1. Analytical Storage Representation
 
-To support sub-second aggregations, faceted filtering, and full-text keyword searches across millions of events, normalized records are mapped to OpenSearch / Elasticsearch analytical index templates with strict type casting and index-time optimizations.
+Normalized records are written to `ulpf.events_v1`, a monthly partitioned `ReplacingMergeTree` ordered by observed time and event ID. Repeated event IDs are logically deduplicated, while invalid normalized records are written to `ulpf.quarantine_v1`. The full JSON remains available for lossless investigation, and frequently filtered fields are projected into typed columns.
 
 ### 1.1 Field Mapping and Indexing Strategy
 
-| Schema Section | Target OpenSearch Type | Indexing & Aggregation Strategy |
+| Schema Section | ClickHouse Representation | Indexing & Aggregation Strategy |
 |---|---|---|
 | `schema_version` | `keyword` | Exact match filtering |
 | `event.id` | `keyword` | Unique document identifier & deduplication key |
@@ -120,17 +129,28 @@ The visibility layer provides a unified filter bar enabling analysts to isolate 
 
 ## 4. Search and Filtering Query Expectations
 
-The query engine supports KQL (Kibana/OpenSearch Query Language) and Lucene syntax:
+The API uses bound ClickHouse query parameters for all caller-provided values. Grafana uses version-controlled SQL and escaped template variables. Supported dimensions include time, vendor, product, category, action, severity, quality, event ID and raw SHA-256.
 
-- **Free-Text Search**: `CVE-2021-44228` matches across `event.message`, `threat.name`, and `event.name`.
-- **Boolean Multi-field**: `action.normalized:deny AND observer.vendor:cisco AND source.ip:"203.0.113.0/24"`
-- **Severity Range**: `severity.normalized: >= 7` (High and Critical alerts only).
-- **Quality Auditing**: `quality.status: partial OR quality.warnings: *`
-- **Provenance Linkage**: `traceability.raw_sha256: "7ae0bc1f3e2529e582c1451bf51a00b4f41a0627d0a6ba5b5bc57117fa5f1ed5"`
+- **Free text:** case-insensitive search over retained `normalized_json`.
+- **Facets:** exact case-insensitive vendor, category, action, severity and quality filters.
+- **Time:** inclusive start and exclusive end boundaries on `observed_at`.
+- **Provenance:** parameterized event-ID and raw-SHA-256 lookup.
+- **Bounded results:** API search limits are clamped to 500 records.
+- **Dashboard health:** quarantine counts expose parse failures and storage-related dead-letter evidence.
+
+## 5. Run the persistent visibility stack
+
+```bash
+docker compose up -d clickhouse ulpf-engine grafana
+```
+
+Open `http://localhost:3000`, sign in with `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD`, then open the **ULPF Prism** folder. For local evaluation only, the Compose defaults are `admin` / `ulpf-admin`; set both variables before any shared deployment. Anonymous access and self-service sign-up are disabled.
+
+The first start installs the pinned official ClickHouse datasource plugin. Air-gapped packaging must preload the same image and plugin version rather than downloading them at runtime.
 
 ---
 
-## 5. Normalized Sample Fixtures
+## 6. Normalized Sample Fixtures
 
 Representative schema-compliant sample files are located in `examples/visibility/`:
 - `examples/visibility/cisco_asa_firewall_deny.json` (Cisco ASA Firewall Access Drop)
