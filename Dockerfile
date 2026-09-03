@@ -13,17 +13,18 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the engine, canonical services, schemas, source packs, and tests
+# Copy only runtime code and configuration; tests stay outside the release image.
 COPY core/ ./core/
 COPY src/ ./src/
 COPY schemas/ ./schemas/
 COPY source_packs/ ./source_packs/
-COPY tests/ ./tests/
+COPY config/ ./config/
 COPY main.py .
 
 # Run as a non-root user
 RUN useradd --create-home --shell /bin/bash ulpf \
-    && chown -R ulpf:ulpf /app
+    && mkdir -p /var/lib/ulpf \
+    && chown -R ulpf:ulpf /app /var/lib/ulpf
 USER ulpf
 
 # Sanity-check: load all Source Packs at build/run time via a quick smoke test.

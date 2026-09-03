@@ -9,6 +9,7 @@ from src.streaming.processor import (
 )
 from src.streaming.topics import (
     DEAD_LETTER_TOPIC,
+    FRAMEWORK_METRICS_TOPIC,
     NORMALIZED_EVENT_TOPIC,
     PARSED_EVENT_TOPIC,
     RAW_EVENT_TOPIC,
@@ -23,6 +24,7 @@ from src.streaming.workers import (
 __all__ = [
     "CanonicalKafkaWorker",
     "DEAD_LETTER_TOPIC",
+    "FRAMEWORK_METRICS_TOPIC",
     "NORMALIZED_EVENT_TOPIC",
     "NormalizerProcessor",
     "PARSED_EVENT_TOPIC",

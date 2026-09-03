@@ -10,6 +10,21 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-01-full-platform-integration-design.md`
 
+## Progress checkpoint — 2026-09-03
+
+- Task 1: adapter contracts checkpointed in `1dc41cc`.
+- Task 2: OpenSearch adapter/profile checkpointed in `69078d7`; no live target test yet.
+- Task 3: JSONL/Parquet exports checkpointed in `3cd462f`.
+- Task 4: container roles, broker publisher, safe retry scheduling and archive-ID
+  replay implemented with regression coverage. Compose rendering, shell syntax,
+  focused lint and unit tests verified. Image build was attempted but the Docker
+  daemon was unavailable. Background role health probes and complete release
+  dependency/base-image locking remain open; do not mark this task complete yet.
+- Task 5: offline bundle tooling remains to be implemented. Grafana currently
+  downloads its plugin at startup; the current stack is not air-gapped-ready.
+
+Operational instructions and explicit limitations: `docs/container-stack.md`.
+
 ## Global Constraints
 
 - No public-cloud or runtime internet dependency.

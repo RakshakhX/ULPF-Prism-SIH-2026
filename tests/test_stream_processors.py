@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from core.engine import ParsingEngine
 from src.collection.publisher import RAW_EVENT_TOPIC as COLLECTION_RAW_EVENT_TOPIC
 from src.contracts import ParsedEvent, RawEventEnvelope
@@ -248,3 +250,29 @@ def test_kafka_worker_withholds_commit_when_delivery_callback_reports_error() ->
 
 def test_collection_and_streaming_use_the_same_raw_topic() -> None:
     assert COLLECTION_RAW_EVENT_TOPIC == RAW_EVENT_TOPIC == "raw-event"
+
+
+@pytest.mark.parametrize("headers", [{}, {"retry_stage": "not-a-stage"}])
+@pytest.mark.parametrize("delivery_error", [None, RuntimeError("broker unavailable")])
+def test_invalid_retry_metadata_goes_to_dlq_before_commit(headers, delivery_error) -> None:
+    class RetryMessage(FakeMessage):
+        def headers(self):
+            return list(headers.items())
+
+    router = RetryProcessorRouter(
+        parser=parser_processor(),
+        normalizer=NormalizerProcessor(UniversalNormalizer(default_registry())),
+    )
+    records: list[str] = []
+    worker = CanonicalKafkaWorker(
+        consumer=FakeConsumer(records),
+        producer=FakeProducer(records, delivery_error=delivery_error),
+        processor=router,
+    )
+
+    assert worker.process_one(RetryMessage(b"exact original payload")) is (delivery_error is None)
+    assert records[:2] == ["produce:dead-letter", "flush"]
+    assert ("commit" in records) is (delivery_error is None)
+    decision = router.for_headers(headers).process(b"exact original payload")
+    assert decision.payload == b"exact original payload"
+    assert decision.error_code == "INVALID_RETRY_METADATA"

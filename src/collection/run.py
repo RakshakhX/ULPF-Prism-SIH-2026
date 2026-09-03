@@ -1,18 +1,36 @@
 """Wires the UDP + TCP collectors to the shared pipeline, publisher, archive."""
 
+import os
+import threading
 from pathlib import Path
 
 from .archive import RawEventArchive
 from .config import AppConfig
 from .pipeline import CollectionPipeline, CollectorConfig
-from .publisher import FileStreamPublisher
+from .publisher import FileStreamPublisher, KafkaStreamPublisher, RawEventPublisher
 from .rejected import RejectedEventLog
 from .tcp_collector import TCPCollector
 from .udp_collector import UDPCollector
 
 
 def build_pipeline(cfg: AppConfig) -> CollectionPipeline:
-    publisher = FileStreamPublisher(Path(cfg.stream_file))
+    publisher: RawEventPublisher
+    brokers = os.environ.get("ULPF_KAFKA_BROKERS")
+    if brokers:
+        from confluent_kafka import Producer
+
+        publisher = KafkaStreamPublisher(
+            Producer(
+                {
+                    "bootstrap.servers": brokers,
+                    "acks": "all",
+                    "enable.idempotence": True,
+                    "compression.type": "zstd",
+                }
+            )
+        )
+    else:
+        publisher = FileStreamPublisher(Path(cfg.stream_file))
     archive = RawEventArchive(Path(cfg.archive_dir))
     rejected_log = RejectedEventLog(Path(cfg.archive_dir) / "rejected")
     pipeline_cfg = CollectorConfig(
@@ -29,7 +47,11 @@ def build_pipeline(cfg: AppConfig) -> CollectionPipeline:
 
 
 def main() -> None:
-    cfg = AppConfig.from_json(Path("config/collector.example.json"))
+    config_path = Path(os.environ.get("ULPF_COLLECTOR_CONFIG", "config/collector.example.json"))
+    cfg = AppConfig.from_json(config_path) if config_path.exists() else AppConfig()
+    cfg.archive_dir = os.environ.get("ULPF_ARCHIVE_DIR", cfg.archive_dir)
+    cfg.udp_port = int(os.environ.get("ULPF_UDP_PORT", cfg.udp_port))
+    cfg.tcp_port = int(os.environ.get("ULPF_TCP_PORT", cfg.tcp_port))
     pipeline = build_pipeline(cfg)
 
     udp = UDPCollector(
@@ -49,8 +71,7 @@ def main() -> None:
     print(f"UDP collector listening on {cfg.udp_host}:{cfg.udp_port}")
     print(f"TCP collector listening on {cfg.tcp_host}:{cfg.tcp_port}")
     try:
-        while True:
-            pass
+        threading.Event().wait()
     except KeyboardInterrupt:
         udp.stop()
         tcp.stop()

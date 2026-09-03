@@ -1,4 +1,122 @@
+x-ulpf-service: &ulpf-service
+  build: .
+  image: ulpf-engine:0.1.0
+  restart: unless-stopped
+  environment: &ulpf-environment
+    ULPF_KAFKA_BROKERS: redpanda:9092
+    ULPF_SOURCE_PACKS_DIR: /app/source_packs
+    ULPF_CLICKHOUSE_URL: http://ulpf:${ULPF_CLICKHOUSE_PASSWORD:-ulpf-local}@clickhouse:8123/ulpf
+    ULPF_DATA_DIR: /var/lib/ulpf
+  volumes:
+    - ./source_packs:/app/source_packs:ro
+    - ulpf-data:/var/lib/ulpf
+  healthcheck:
+    disable: true
+
 services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.1
+    container_name: ulpf-redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "127.0.0.1:19092:19092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --exit-when-healthy -X admin.hosts=127.0.0.1:9644"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  topic-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.1
+    environment:
+      ULPF_KAFKA_BROKERS: redpanda:9092
+      ULPF_TOPIC_PARTITIONS: ${ULPF_TOPIC_PARTITIONS:-3}
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    volumes:
+      - ./deploy/redpanda/init-topics.sh:/init-topics.sh:ro
+    entrypoint: ["/bin/bash", "/init-topics.sh"]
+    restart: "no"
+
+  collector:
+    <<: *ulpf-service
+    container_name: ulpf-collector
+    command: ["python", "-m", "src.collection.run"]
+    environment:
+      <<: *ulpf-environment
+      ULPF_ARCHIVE_DIR: /var/lib/ulpf/raw-archive
+      ULPF_UDP_PORT: "5514"
+      ULPF_TCP_PORT: "5601"
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+    ports:
+      - "5514:5514/udp"
+      - "5601:5601/tcp"
+
+  parser-worker:
+    <<: *ulpf-service
+    command: ["python", "-m", "src.streaming.run", "parser"]
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+
+  normalizer-worker:
+    <<: *ulpf-service
+    command: ["python", "-m", "src.streaming.run", "normalizer"]
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+
+  retry-worker:
+    <<: *ulpf-service
+    command: ["python", "-m", "src.streaming.run", "retry"]
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+
+  sink:
+    <<: *ulpf-service
+    command: ["python", "-m", "src.streaming.run", "sink"]
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_healthy
+
+  ulpf-engine:
+    <<: *ulpf-service
+    container_name: ulpf-engine
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+    depends_on:
+      topic-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test:
+        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   clickhouse:
     image: clickhouse/clickhouse-server:26.8.2.7
     container_name: ulpf-clickhouse
@@ -8,7 +126,7 @@ services:
       CLICKHOUSE_PASSWORD: ${ULPF_CLICKHOUSE_PASSWORD:-ulpf-local}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     ports:
-      - "8123:8123"
+      - "127.0.0.1:8123:8123"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./deploy/clickhouse/init:/docker-entrypoint-initdb.d:ro
@@ -28,27 +146,6 @@ services:
         limits:
           memory: 2G
 
-  ulpf-engine:
-    build: .
-    image: ulpf-engine:latest
-    container_name: ulpf-engine
-    ports:
-      - "8080:8080"
-    environment:
-      ULPF_CLICKHOUSE_URL: http://ulpf:${ULPF_CLICKHOUSE_PASSWORD:-ulpf-local}@clickhouse:8123/ulpf
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    volumes:
-      # Mount source_packs read-write in dev so new/edited packs are picked
-      # up via POST /packs/reload without rebuilding the image.
-      - ./source_packs:/app/source_packs
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
   grafana:
     image: grafana/grafana:13.2.0
     container_name: ulpf-grafana
@@ -63,7 +160,7 @@ services:
       clickhouse:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -115,6 +212,8 @@ services:
       - "@/template.json"
 
 volumes:
+  redpanda-data:
   clickhouse-data:
   grafana-data:
   opensearch-data:
+  ulpf-data:

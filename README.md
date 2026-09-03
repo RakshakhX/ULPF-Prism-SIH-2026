@@ -42,6 +42,7 @@ The CLI returns `0` for valid events, `1` for invalid events, and `2` when it ca
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [Local container stack and verification limits](docs/container-stack.md)
 - [Component boundaries and ownership](docs/component-boundaries.md)
 - [Development workflow](docs/development-workflow.md)
 - [Engineering conventions](docs/engineering-conventions.md)

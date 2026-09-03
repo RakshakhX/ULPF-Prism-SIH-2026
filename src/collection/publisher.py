@@ -1,7 +1,7 @@
 import json
 import threading
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from src.contracts import RawEventEnvelope
 from src.streaming.topics import RAW_EVENT_TOPIC
@@ -42,3 +42,30 @@ class FileStreamPublisher:
         with self._lock:
             with self.stream_path.open("a", encoding="utf-8") as f:
                 f.write(line + "\n")
+
+
+class KafkaStreamPublisher:
+    """Publish archived raw envelopes to the canonical broker topic."""
+
+    def __init__(self, producer: Any, *, flush_timeout_seconds: float = 10.0) -> None:
+        self.topic = RAW_EVENT_TOPIC
+        self.producer = producer
+        self.flush_timeout_seconds = flush_timeout_seconds
+
+    def publish(self, envelope: RawEventEnvelope) -> None:
+        errors: list[str] = []
+
+        def delivered(error: Any, _message: Any) -> None:
+            if error is not None:
+                errors.append(str(error))
+
+        self.producer.produce(
+            topic=self.topic,
+            key=str(envelope.event_id).encode(),
+            value=envelope.model_dump_json().encode(),
+            on_delivery=delivered,
+        )
+        pending = self.producer.flush(self.flush_timeout_seconds)
+        if pending or errors:
+            detail = "; ".join(errors) if errors else f"{pending} message(s) still pending"
+            raise RuntimeError(f"raw-event publish failed: {detail}")

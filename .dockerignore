@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+.pytest_cache
+.ruff_cache
+**/__pycache__
+**/*.py[cod]
+data
+archive_store
+raw_event_stream.ndjson
+tests
+docs
+files
+*.egg-info
+.DS_Store
