@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.pipeline.storage import AnalyticalVisibilityStore
@@ -92,6 +93,22 @@ def test_in_memory_store_implements_the_shared_batch_contract() -> None:
     assert result.valid_count == 1
     assert result.failed_count == 0
     assert store.get_by_event_id(event["event"]["id"]) == event
+
+
+def test_in_memory_search_implements_persistent_filter_contract() -> None:
+    store = AnalyticalVisibilityStore()
+    event = valid_event()
+    store.write_batch([event])
+
+    found = store.search(
+        category=event["event"]["category"],
+        start_time=datetime(2026, 1, 1, tzinfo=UTC),
+        end_time=datetime(2027, 1, 1, tzinfo=UTC),
+    )
+
+    assert found == [event]
+    assert store.search(category="authentication") == []
+    assert store.search(end_time=datetime(2026, 1, 1, tzinfo=UTC)) == []
 
 
 def test_clickhouse_schema_preserves_json_and_projected_traceability() -> None:

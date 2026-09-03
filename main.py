@@ -6,8 +6,9 @@ import base64
 import binascii
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
@@ -21,8 +22,10 @@ from src.contracts import ParsedEvent, RawEventEnvelope
 from src.normalization import UniversalNormalizer, default_registry
 from src.pipeline.dashboard_html import DASHBOARD_HTML
 from src.pipeline.exporter import DataLakeExporter
-from src.pipeline.runner import CollectionRejectedError, PipelineRunner
+from src.pipeline.runner import CollectionRejectedError, PipelineRunner, StorageWriteError
 from src.pipeline.storage import global_visibility_store
+from src.storage import ClickHouseEventStore, create_clickhouse_client
+from src.storage.base import AnalyticalEventStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("ulpf.main")
@@ -59,7 +62,22 @@ class EventIngestRequest(BaseModel):
             raise ValueError("raw_base64 must be valid Base64") from error
 
 
-def build_default_runner(data_dir: Path = DATA_DIR) -> PipelineRunner:
+def build_analytical_store(url: str | None = None) -> AnalyticalEventStore:
+    """Select persistent storage when configured and zero-setup memory otherwise."""
+
+    configured_url = os.environ.get("ULPF_CLICKHOUSE_URL", "") if url is None else url
+    if not configured_url:
+        return global_visibility_store
+    return ClickHouseEventStore(create_clickhouse_client(configured_url))
+
+
+analytical_store = build_analytical_store()
+
+
+def build_default_runner(
+    data_dir: Path = DATA_DIR,
+    store: AnalyticalEventStore | None = None,
+) -> PipelineRunner:
     """Compose production-facing services without inserting sample events."""
 
     archive = RawEventArchive(data_dir / "raw-archive")
@@ -68,7 +86,7 @@ def build_default_runner(data_dir: Path = DATA_DIR) -> PipelineRunner:
         collector=CollectionPipeline(publisher=publisher, archive=archive),
         engine=ParsingEngine(PACKS_DIR),
         normalizer=UniversalNormalizer(default_registry()),
-        store=global_visibility_store,
+        store=store or analytical_store,
         exporter=DataLakeExporter(data_dir / "exports"),
     )
 
@@ -92,7 +110,7 @@ def healthz():
     return {
         "status": "ok",
         "loaded_packs": len(engine.registry.packs),
-        "indexed_events": global_visibility_store.event_count,
+        "indexed_events": analytical_store.event_count,
     }
 
 
@@ -149,6 +167,8 @@ def process_event(request: EventIngestRequest):
     except CollectionRejectedError as error:
         status_code = 413 if error.result.reason == "oversized_event" else 422
         raise HTTPException(status_code=status_code, detail=error.result.reason) from error
+    except StorageWriteError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     return result.response()
 
 
@@ -166,25 +186,35 @@ def process_cisco_asa_pipeline(
 def get_analytics_events(
     query: str | None = Query(None, description="Free text or field query"),
     vendor: str | None = Query(None, description="Vendor filter"),
+    category: str | None = Query(None, description="Event-category filter"),
     action: str | None = Query(None, description="Action filter"),
     severity: str | None = Query(None, description="Severity filter"),
     quality_status: str | None = Query(None, description="Quality status filter"),
+    start_time: Annotated[
+        datetime | None, Query(description="Inclusive observed-time boundary")
+    ] = None,
+    end_time: Annotated[
+        datetime | None, Query(description="Exclusive observed-time boundary")
+    ] = None,
     limit: int = Query(50, ge=1, le=500),
 ):
-    events = global_visibility_store.search(
+    events = analytical_store.search(
         query=query,
         vendor=vendor,
+        category=category,
         action=action,
         severity=severity,
         quality_status=quality_status,
+        start_time=start_time,
+        end_time=end_time,
         limit=limit,
     )
-    return {"events": events, "aggregations": global_visibility_store.get_aggregations()}
+    return {"events": events, "aggregations": analytical_store.get_aggregations()}
 
 
 @app.post("/v1/export/data-lake")
 def export_data_lake():
-    events = global_visibility_store.list_events(limit=1000)
+    events = analytical_store.list_events(limit=1000)
     return exporter.export_events(events)
 
 

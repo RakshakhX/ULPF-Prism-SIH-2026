@@ -1,12 +1,44 @@
-version: "3.9"
-
 services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.8.2.7
+    container_name: ulpf-clickhouse
+    environment:
+      CLICKHOUSE_DB: ulpf
+      CLICKHOUSE_USER: ulpf
+      CLICKHOUSE_PASSWORD: ${ULPF_CLICKHOUSE_PASSWORD:-ulpf-local}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./deploy/clickhouse/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          clickhouse-client --user "$${CLICKHOUSE_USER}" --password
+          "$${CLICKHOUSE_PASSWORD}" --query "SELECT 1"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
   ulpf-engine:
     build: .
     image: ulpf-engine:latest
     container_name: ulpf-engine
     ports:
       - "8080:8080"
+    environment:
+      ULPF_CLICKHOUSE_URL: http://ulpf:${ULPF_CLICKHOUSE_PASSWORD:-ulpf-local}@clickhouse:8123/ulpf
+    depends_on:
+      clickhouse:
+        condition: service_healthy
     volumes:
       # Mount source_packs read-write in dev so new/edited packs are picked
       # up via POST /packs/reload without rebuilding the image.
@@ -16,3 +48,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+volumes:
+  clickhouse-data:

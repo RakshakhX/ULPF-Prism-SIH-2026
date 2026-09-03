@@ -7,6 +7,7 @@ multi-attribute faceted search, CIDR/free-text filtering, and raw evidence drill
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from src.storage.models import WriteResult
@@ -49,21 +50,22 @@ class AnalyticalVisibilityStore:
         """Implement the persistent sink contract for tests and local demos."""
 
         valid_count = 0
-        failed_count = 0
+        quarantine_count = 0
         for event in events:
             if (
                 not validate_event(event).valid
                 or event.get("quality", {}).get("status") == "invalid"
             ):
-                failed_count += 1
+                self.add_event(event)
+                quarantine_count += 1
                 continue
             self.add_event(event)
             valid_count += 1
         return WriteResult(
-            accepted_count=valid_count,
+            accepted_count=valid_count + quarantine_count,
             valid_count=valid_count,
-            quarantine_count=0,
-            failed_count=failed_count,
+            quarantine_count=quarantine_count,
+            failed_count=0,
         )
 
     def get_by_raw_hash(self, raw_sha256: str) -> dict[str, Any] | None:
@@ -78,9 +80,12 @@ class AnalyticalVisibilityStore:
         self,
         query: str | None = None,
         vendor: str | None = None,
+        category: str | None = None,
         action: str | None = None,
         severity: str | None = None,
         quality_status: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Search and filter events by attributes and free-text."""
@@ -93,10 +98,28 @@ class AnalyticalVisibilityStore:
             if vendor and vendor.lower() != "all" and vendor.lower() != ev_vendor:
                 continue
 
+            ev_category = event.get("event", {}).get("category", "").lower()
+            if (
+                category
+                and category.lower() != "all"
+                and category.lower() != ev_category
+            ):
+                continue
+
             # Action filter
             ev_action = event.get("action", {}).get("normalized", "").lower()
             if action and action.lower() != "all" and action.lower() != ev_action:
                 continue
+
+            observed_value = event.get("time", {}).get("observed_at")
+            if (start_time is not None or end_time is not None) and isinstance(
+                observed_value, str
+            ):
+                observed_at = datetime.fromisoformat(observed_value.replace("Z", "+00:00"))
+                if start_time is not None and observed_at < start_time:
+                    continue
+                if end_time is not None and observed_at >= end_time:
+                    continue
 
             # Severity filter
             ev_sev = event.get("severity", {}).get("label", "").lower()

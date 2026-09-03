@@ -24,6 +24,7 @@ storage = ["clickhouse-connect>=0.8,<1.0"]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]
+markers = ["integration: requires live external services"]
 
 [tool.ruff]
 line-length = 100

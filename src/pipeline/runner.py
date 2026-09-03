@@ -11,7 +11,8 @@ from src.collection.pipeline import CollectionPipeline, IngestResult
 from src.contracts import ParsedEvent, RawEventEnvelope
 from src.normalization import UniversalNormalizer
 from src.pipeline.exporter import DataLakeExporter
-from src.pipeline.storage import AnalyticalVisibilityStore
+from src.storage.base import AnalyticalEventStore
+from src.storage.models import WriteResult
 from src.validation.result import ValidationResult
 from src.validation.validate_unified_event import validate_event
 
@@ -24,6 +25,14 @@ class CollectionRejectedError(ValueError):
     def __init__(self, result: IngestResult) -> None:
         self.result = result
         super().__init__(result.reason or "collection rejected event")
+
+
+class StorageWriteError(RuntimeError):
+    """The normalized event could not be durably stored or quarantined."""
+
+    def __init__(self, result: WriteResult) -> None:
+        self.result = result
+        super().__init__("; ".join(result.errors) or "analytical storage write failed")
 
 
 @dataclass(frozen=True)
@@ -57,7 +66,7 @@ class PipelineRunner:
         collector: CollectionPipeline,
         engine: ParsingEngine,
         normalizer: UniversalNormalizer,
-        store: AnalyticalVisibilityStore,
+        store: AnalyticalEventStore,
         exporter: DataLakeExporter,
     ) -> None:
         self.collector = collector
@@ -104,7 +113,10 @@ class PipelineRunner:
                 f"{issue.path}: {issue.message}" for issue in validation.issues
             )
 
-        self.store.add_event(unified)
+        write_result = self.store.write_batch([unified])
+        if write_result.failed_count:
+            raise StorageWriteError(write_result)
+        storage_status = "quarantined" if write_result.quarantine_count else "indexed"
         return PipelineResult(
             raw_event=envelope,
             parsed=parsed,
@@ -115,7 +127,7 @@ class PipelineRunner:
                 "parsing": parsed.status.value,
                 "normalization": unified["quality"]["status"],
                 "validation": "valid" if validation.valid else "invalid",
-                "storage": "indexed",
+                "storage": storage_status,
             },
         )
 
